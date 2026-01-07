@@ -2,7 +2,7 @@
 header('Content-Type: application/json; charset=utf-8');
 require_once '../config.php';
 
-// Debug logging function
+// Simple debug log function
 function debug_log($message) {
     $log_file = __DIR__ . '/../logs/cart_debug.log';
     $dir = dirname($log_file);
@@ -18,16 +18,15 @@ function debug_log($message) {
 // Pastikan session aktif
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-debug_log('=== NEW REQUEST ===' . json_encode($_GET));
+debug_log('=== NEW REQUEST === ' . json_encode($_REQUEST));
 
-// Cek User ID (Login atau Guest)
+// Cek User ID
 function getCurrentUserId() {
     global $conn;
     
     debug_log('Getting current user ID...');
-    debug_log('Session data: ' . json_encode($_SESSION));
     
-    // 1. Jika sudah login, pakai ID asli
+    // Get user info
     $user_info = get_user_info();
     debug_log('get_user_info() returned: ' . json_encode($user_info));
     
@@ -36,40 +35,7 @@ function getCurrentUserId() {
         return $user_info['id'];
     }
 
-    // 2. Jika Guest dan sudah punya session guest_id
-    if (isset($_SESSION['guest_id'])) {
-        debug_log('Using existing guest ID: ' . $_SESSION['guest_id']);
-        return $_SESSION['guest_id'];
-    }
-
-    // 3. Jika Guest baru, buatkan user sementara di DB
-    debug_log('Creating new guest user...');
-    $username = 'guest_' . time() . '_' . rand(100,999);
-    $email = $username . '@temp.local';
-    $password = password_hash('guest123', PASSWORD_DEFAULT);
-    $nama = 'Guest Shopper';
-    
-    $sql = "INSERT INTO users (username, password, nama_lengkap, email, status_akun, tanggal_daftar) 
-            VALUES (?, ?, ?, ?, 'Aktif', NOW())";
-            
-    $stmt = mysqli_prepare($conn, $sql);
-    if (!$stmt) {
-        debug_log('Prepare failed: ' . mysqli_error($conn));
-        return null;
-    }
-    
-    mysqli_stmt_bind_param($stmt, 'ssss', $username, $password, $nama, $email);
-    
-    if (mysqli_stmt_execute($stmt)) {
-        $new_id = mysqli_insert_id($conn);
-        $_SESSION['guest_id'] = $new_id;
-        debug_log('New guest user created with ID: ' . $new_id);
-        mysqli_stmt_close($stmt);
-        return $new_id;
-    }
-    
-    debug_log('Failed to create guest user: ' . mysqli_error($conn));
-    mysqli_stmt_close($stmt);
+    debug_log('No user found');
     return null;
 }
 
@@ -78,7 +44,7 @@ debug_log('Final user_id: ' . $user_id);
 
 if (!$user_id) {
     debug_log('ERROR: Failed to get user_id');
-    echo json_encode(['success' => false, 'message' => 'Gagal menginisialisasi user session']);
+    echo json_encode(['success' => false, 'message' => 'User session not found']);
     exit;
 }
 
@@ -87,11 +53,15 @@ debug_log('Action: ' . $action);
 
 // --- LOGIC ADD TO CART ---
 if ($action === 'add') {
+    debug_log('Processing ADD action');
+    
     $input = json_decode(file_get_contents('php://input'), true);
     debug_log('Raw input: ' . file_get_contents('php://input'));
+    debug_log('Parsed input: ' . json_encode($input));
     
     if (!$input) {
         debug_log('ERROR: Invalid JSON input');
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Invalid JSON input']);
         exit;
     }
@@ -103,20 +73,30 @@ if ($action === 'add') {
 
     if ($id_produk <= 0 || $qty <= 0) {
         debug_log('ERROR: Invalid product ID or quantity');
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Invalid product ID or quantity']);
         exit;
     }
 
-    // Cek stok dengan prepared statement
+    // Cek stok
+    debug_log('Checking stock for product ' . $id_produk);
     $stmt_cek = mysqli_prepare($conn, "SELECT stok FROM produk WHERE id_produk = ?");
     if (!$stmt_cek) {
         debug_log('ERROR: Prepare stock check failed: ' . mysqli_error($conn));
-        echo json_encode(['success' => false, 'message' => 'Database error: ' . mysqli_error($conn)]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
         exit;
     }
     
     mysqli_stmt_bind_param($stmt_cek, 'i', $id_produk);
-    mysqli_stmt_execute($stmt_cek);
+    if (!mysqli_stmt_execute($stmt_cek)) {
+        debug_log('ERROR: Execute stock check failed: ' . mysqli_error($conn));
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
+        mysqli_stmt_close($stmt_cek);
+        exit;
+    }
+    
     $result_cek = mysqli_stmt_get_result($stmt_cek);
     $prod = mysqli_fetch_assoc($result_cek);
     mysqli_stmt_close($stmt_cek);
@@ -125,26 +105,37 @@ if ($action === 'add') {
 
     if (!$prod) {
         debug_log('ERROR: Product not found');
-        echo json_encode(['success' => false, 'message' => 'Produk tidak ditemukan']);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Product not found']);
         exit;
     }
 
     if ($qty > (int)$prod['stok']) {
         debug_log('ERROR: Insufficient stock');
-        echo json_encode(['success' => false, 'message' => 'Stok tidak mencukupi. Stok tersedia: ' . $prod['stok']]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Stock insufficient']);
         exit;
     }
 
     // Cek item di keranjang
+    debug_log('Checking if item exists in cart for user ' . $user_id . ' and product ' . $id_produk);
     $stmt_check = mysqli_prepare($conn, "SELECT id_keranjang, jumlah FROM keranjang WHERE id_user = ? AND id_produk = ?");
     if (!$stmt_check) {
         debug_log('ERROR: Prepare check cart failed: ' . mysqli_error($conn));
-        echo json_encode(['success' => false, 'message' => 'Database error: ' . mysqli_error($conn)]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
         exit;
     }
     
     mysqli_stmt_bind_param($stmt_check, 'ii', $user_id, $id_produk);
-    mysqli_stmt_execute($stmt_check);
+    if (!mysqli_stmt_execute($stmt_check)) {
+        debug_log('ERROR: Execute check cart failed: ' . mysqli_error($conn));
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
+        mysqli_stmt_close($stmt_check);
+        exit;
+    }
+    
     $result_check = mysqli_stmt_get_result($stmt_check);
     
     $item_exists = mysqli_num_rows($result_check) > 0;
@@ -157,11 +148,11 @@ if ($action === 'add') {
         
         debug_log('Updating existing item: old_qty=' . $row['jumlah'] . ', new_qty=' . $new_qty);
         
-        // Cek apakah total quantity melebihi stok
         if ($new_qty > (int)$prod['stok']) {
             mysqli_stmt_close($stmt_check);
             debug_log('ERROR: Total quantity exceeds stock');
-            echo json_encode(['success' => false, 'message' => 'Total quantity melebihi stok. Stok tersedia: ' . $prod['stok']]);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'Total quantity exceeds stock']);
             exit;
         }
         
@@ -169,64 +160,57 @@ if ($action === 'add') {
         if (!$stmt_update) {
             mysqli_stmt_close($stmt_check);
             debug_log('ERROR: Prepare update failed: ' . mysqli_error($conn));
-            echo json_encode(['success' => false, 'message' => 'Database error: ' . mysqli_error($conn)]);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
             exit;
         }
         
         mysqli_stmt_bind_param($stmt_update, 'ii', $new_qty, $row['id_keranjang']);
-        $exec = mysqli_stmt_execute($stmt_update);
-        
-        debug_log('Update executed: ' . ($exec ? 'success' : 'failed') . ', error: ' . mysqli_error($conn));
-        
-        mysqli_stmt_close($stmt_update);
-        
-        if ($exec) {
+        if (!mysqli_stmt_execute($stmt_update)) {
+            mysqli_stmt_close($stmt_update);
             mysqli_stmt_close($stmt_check);
-            debug_log('SUCCESS: Item quantity updated');
-            echo json_encode(['success' => true, 'message' => 'Quantity produk di keranjang diperbarui']);
-            exit;
-        } else {
-            mysqli_stmt_close($stmt_check);
-            debug_log('ERROR: Update failed: ' . mysqli_error($conn));
-            echo json_encode(['success' => false, 'message' => 'Gagal update keranjang: ' . mysqli_error($conn)]);
+            debug_log('ERROR: Update execute failed: ' . mysqli_error($conn));
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
             exit;
         }
+        
+        debug_log('SUCCESS: Item quantity updated');
+        mysqli_stmt_close($stmt_update);
+        mysqli_stmt_close($stmt_check);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'message' => 'Product quantity updated']);
+        exit;
     } else {
         // Item baru, insert
-        debug_log('Inserting new item to cart: id_user=' . $user_id . ', id_produk=' . $id_produk . ', qty=' . $qty);
+        debug_log('Inserting new item to cart');
         
         $stmt_insert = mysqli_prepare($conn, "INSERT INTO keranjang (id_user, id_produk, jumlah, tanggal_ditambahkan) VALUES (?, ?, ?, NOW())");
         if (!$stmt_insert) {
             mysqli_stmt_close($stmt_check);
             debug_log('ERROR: Prepare insert failed: ' . mysqli_error($conn));
-            echo json_encode(['success' => false, 'message' => 'Database error: ' . mysqli_error($conn)]);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
             exit;
         }
         
         mysqli_stmt_bind_param($stmt_insert, 'iii', $user_id, $id_produk, $qty);
-        $exec = mysqli_stmt_execute($stmt_insert);
-        
-        debug_log('Insert executed: ' . ($exec ? 'success' : 'failed') . ', error: ' . mysqli_error($conn));
-        
-        $last_id = mysqli_insert_id($conn);
-        debug_log('Last insert ID: ' . $last_id);
-        
-        mysqli_stmt_close($stmt_insert);
-        
-        if ($exec) {
+        if (!mysqli_stmt_execute($stmt_insert)) {
+            mysqli_stmt_close($stmt_insert);
             mysqli_stmt_close($stmt_check);
-            debug_log('SUCCESS: New item added to cart');
-            echo json_encode(['success' => true, 'message' => 'Produk ditambahkan ke keranjang']);
-            exit;
-        } else {
-            mysqli_stmt_close($stmt_check);
-            debug_log('ERROR: Insert failed: ' . mysqli_error($conn));
-            echo json_encode(['success' => false, 'message' => 'Gagal menambahkan ke keranjang: ' . mysqli_error($conn)]);
+            debug_log('ERROR: Insert execute failed: ' . mysqli_error($conn));
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error: ' . mysqli_error($conn)]);
             exit;
         }
+        
+        debug_log('SUCCESS: New item added to cart');
+        mysqli_stmt_close($stmt_insert);
+        mysqli_stmt_close($stmt_check);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'message' => 'Product added to cart']);
+        exit;
     }
-    
-    mysqli_stmt_close($stmt_check);
 }
 
 // --- LOGIC GET CART ---
@@ -251,7 +235,8 @@ if ($action === 'get') {
     $stmt = mysqli_prepare($conn, $query);
     if (!$stmt) {
         debug_log('ERROR: Prepare get cart failed: ' . mysqli_error($conn));
-        echo json_encode(['success' => false, 'message' => 'Query error: ' . mysqli_error($conn)]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error']);
         exit;
     }
     
@@ -271,6 +256,7 @@ if ($action === 'get') {
     debug_log('Cart items count: ' . count($items));
     
     mysqli_stmt_close($stmt);
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => true, 'items' => $items, 'count' => count($items)]);
     exit;
 }
@@ -279,7 +265,8 @@ if ($action === 'get') {
 if ($action === 'count') {
     $stmt = mysqli_prepare($conn, "SELECT COUNT(*) as cnt FROM keranjang WHERE id_user = ?");
     if (!$stmt) {
-        echo json_encode(['success' => false, 'message' => 'Query error']);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error']);
         exit;
     }
     
@@ -289,6 +276,7 @@ if ($action === 'count') {
     $row = mysqli_fetch_assoc($result);
     mysqli_stmt_close($stmt);
     
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => true, 'count' => (int)$row['cnt']]);
     exit;
 }
@@ -299,13 +287,15 @@ if ($action === 'remove') {
     $id_produk = (int)($input['id_produk'] ?? 0);
     
     if ($id_produk <= 0) {
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Invalid product ID']);
         exit;
     }
     
     $stmt = mysqli_prepare($conn, "DELETE FROM keranjang WHERE id_user = ? AND id_produk = ?");
     if (!$stmt) {
-        echo json_encode(['success' => false, 'message' => 'Database error']);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'DB Error']);
         exit;
     }
     
@@ -313,6 +303,7 @@ if ($action === 'remove') {
     $result = mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
     
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => $result]);
     exit;
 }
@@ -324,6 +315,7 @@ if ($action === 'update') {
     $new_qty = (int)($input['quantity'] ?? 0);
     
     if ($id_produk <= 0) {
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Invalid product ID']);
         exit;
     }
@@ -331,7 +323,8 @@ if ($action === 'update') {
     if ($new_qty <= 0) {
         $stmt = mysqli_prepare($conn, "DELETE FROM keranjang WHERE id_user = ? AND id_produk = ?");
         if (!$stmt) {
-            echo json_encode(['success' => false, 'message' => 'Database error']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error']);
             exit;
         }
         
@@ -341,7 +334,8 @@ if ($action === 'update') {
     } else {
         $stmt_cek = mysqli_prepare($conn, "SELECT stok FROM produk WHERE id_produk = ?");
         if (!$stmt_cek) {
-            echo json_encode(['success' => false, 'message' => 'Database error']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error']);
             exit;
         }
         
@@ -352,13 +346,15 @@ if ($action === 'update') {
         mysqli_stmt_close($stmt_cek);
         
         if (!$prod || $new_qty > (int)$prod['stok']) {
-            echo json_encode(['success' => false, 'message' => 'Stok tidak mencukupi']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'Stock insufficient']);
             exit;
         }
         
         $stmt = mysqli_prepare($conn, "UPDATE keranjang SET jumlah = ? WHERE id_user = ? AND id_produk = ?");
         if (!$stmt) {
-            echo json_encode(['success' => false, 'message' => 'Database error']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'DB Error']);
             exit;
         }
         
@@ -367,9 +363,11 @@ if ($action === 'update') {
         mysqli_stmt_close($stmt);
     }
     
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => true]);
     exit;
 }
 
+header('Content-Type: application/json; charset=utf-8');
 echo json_encode(['success' => false, 'message' => 'Action not found']);
 ?>
