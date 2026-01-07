@@ -1,202 +1,134 @@
 <?php
-session_start();
 header('Content-Type: application/json');
-require_once '../config.php';
+session_start();
+require_once '../config/config.php';
 
-// Log untuk debugging
-$log_file = '../logs/shipping_debug.log';
-if (!is_dir('../logs')) {
-    mkdir('../logs', 0755, true);
-}
+// Enable error logging
+ini_set('log_errors', 1);
+ini_set('error_log', '../logs/shipping_debug.log');
 
-function log_message($message) {
-    global $log_file;
-    $timestamp = date('[Y-m-d H:i:s]');
-    file_put_contents($log_file, $timestamp . ' ' . $message . "\n", FILE_APPEND);
-}
-
-log_message('=== NEW REQUEST ===');
-
-// Check user login
-if (!isset($_SESSION['user_id'])) {
-    log_message('ERROR: User not logged in');
-    http_response_code(401);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Anda harus login terlebih dahulu'
-    ]);
-    exit;
-}
-
-$user_id = $_SESSION['user_id'];
-log_message("User ID: $user_id");
-
-// Get JSON input
-$input = json_decode(file_get_contents('php://input'), true);
-log_message("Input data: " . json_encode($input));
-
-// Validate required fields
-$required_fields = ['nama_penerima', 'no_telepon', 'email', 'provinsi', 'kota', 'kecamatan', 'kode_pos', 'alamat_lengkap', 'metode_pengiriman'];
-
-foreach ($required_fields as $field) {
-    if (empty($input[$field] ?? '')) {
-        log_message("ERROR: Missing field: $field");
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'message' => "Field '{$field}' harus diisi"
-        ]);
-        exit;
+try {
+    // Check session
+    if (!isset($_SESSION['user_id'])) {
+        throw new Exception('User not logged in');
     }
-}
 
-// Validate email format
-if (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
-    log_message("ERROR: Invalid email format: " . $input['email']);
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Format email tidak valid'
-    ]);
-    exit;
-}
+    $user_id = $_SESSION['user_id'];
 
-// Validate phone number (10-13 digits)
-if (!preg_match('/^[0-9]{10,13}$/', preg_replace('/[^0-9]/', '', $input['no_telepon']))) {
-    log_message("ERROR: Invalid phone: " . $input['no_telepon']);
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Nomor telepon harus 10-13 digit'
-    ]);
-    exit;
-}
+    // Validate input
+    $nama_penerima = trim($_POST['nama_penerima'] ?? '');
+    $no_telepon = trim($_POST['no_telepon'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $alamat_lengkap = trim($_POST['alamat_lengkap'] ?? '');
+    $kota = trim($_POST['kota'] ?? '');
+    $kode_pos = trim($_POST['kode_pos'] ?? '');
+    $metode_pengiriman = trim($_POST['metode_pengiriman'] ?? 'regular');
+    $catatan = trim($_POST['catatan'] ?? '');
 
-// Validate postal code (5-10 digits)
-if (!preg_match('/^[0-9]{5,10}$/', $input['kode_pos'])) {
-    log_message("ERROR: Invalid postal code: " . $input['kode_pos']);
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Kode pos harus 5-10 digit'
-    ]);
-    exit;
-}
+    // Validate required fields
+    if (empty($nama_penerima) || empty($no_telepon) || empty($email) || empty($alamat_lengkap) || empty($kota) || empty($kode_pos)) {
+        throw new Exception('Semua field harus diisi');
+    }
 
-// Shipping costs
-$shipping_costs = [
-    'regular' => 20000,
-    'express' => 50000,
-    'same_day' => 100000
-];
+    // Validate email
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new Exception('Email tidak valid');
+    }
 
-if (!isset($shipping_costs[$input['metode_pengiriman']])) {
-    log_message("ERROR: Invalid shipping method: " . $input['metode_pengiriman']);
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Metode pengiriman tidak valid'
-    ]);
-    exit;
-}
+    // Validate phone (10-13 digits)
+    if (!preg_match('/^\d{10,13}$/', str_replace([' ', '-', '+'], '', $no_telepon))) {
+        throw new Exception('Nomor telepon harus 10-13 digit');
+    }
 
-$ongkir = $shipping_costs[$input['metode_pengiriman']];
-log_message("Ongkir calculated: $ongkir for method: " . $input['metode_pengiriman']);
+    // Validate postal code (5-10 digits)
+    if (!preg_match('/^\d{5,10}$/', $kode_pos)) {
+        throw new Exception('Kode pos harus 5-10 digit');
+    }
 
-// Escape strings
-$nama_penerima = mysqli_real_escape_string($conn, $input['nama_penerima']);
-$no_telepon = mysqli_real_escape_string($conn, $input['no_telepon']);
-$email = mysqli_real_escape_string($conn, $input['email']);
-$provinsi = mysqli_real_escape_string($conn, $input['provinsi']);
-$kota = mysqli_real_escape_string($conn, $input['kota']);
-$kecamatan = mysqli_real_escape_string($conn, $input['kecamatan']);
-$kode_pos = mysqli_real_escape_string($conn, $input['kode_pos']);
-$alamat_lengkap = mysqli_real_escape_string($conn, $input['alamat_lengkap']);
-$metode_pengiriman = mysqli_real_escape_string($conn, $input['metode_pengiriman']);
-$catatan = mysqli_real_escape_string($conn, $input['catatan'] ?? '');
+    // Set shipping cost
+    $ongkir = 0;
+    switch ($metode_pengiriman) {
+        case 'regular':
+            $ongkir = 20000;
+            break;
+        case 'express':
+            $ongkir = 50000;
+            break;
+        case 'same_day':
+            $ongkir = 100000;
+            break;
+        default:
+            throw new Exception('Metode pengiriman tidak valid');
+    }
 
-// Generate unique shipping number
-$no_pengiriman = 'PGR-' . strtoupper(uniqid());
+    // Generate pengiriman number
+    $no_pengiriman = 'PGR-' . date('YmdHis') . '-' . rand(1000, 9999);
 
-// Get current datetime
-$tgl_sekarang = date('Y-m-d H:i:s');
+    // Insert into database
+    $query = "INSERT INTO pengiriman (
+                id_user, 
+                no_pengiriman, 
+                nama_penerima, 
+                no_telepon, 
+                email, 
+                alamat_lengkap, 
+                kota, 
+                kode_pos, 
+                metode_pengiriman, 
+                ongkir, 
+                status_pengiriman,
+                created_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                NOW()
+            )";
 
-// Insert to database
-$sql = "INSERT INTO pengiriman (
-    id_user,
-    no_pengiriman,
-    nama_penerima,
-    no_telepon,
-    email,
-    provinsi,
-    kota,
-    kecamatan,
-    kode_pos,
-    alamat_lengkap,
-    metode_pengiriman,
-    ongkir,
-    catatan,
-    status_pengiriman,
-    tanggal_pengiriman,
-    tanggal_konfirmasi
-) VALUES (
-    '$user_id',
-    '$no_pengiriman',
-    '$nama_penerima',
-    '$no_telepon',
-    '$email',
-    '$provinsi',
-    '$kota',
-    '$kecamatan',
-    '$kode_pos',
-    '$alamat_lengkap',
-    '$metode_pengiriman',
-    '$ongkir',
-    '$catatan',
-    'Menunggu Verifikasi Pembayaran',
-    '$tgl_sekarang',
-    '$tgl_sekarang'
-)";
+    $stmt = $conn->prepare($query);
+    if (!$stmt) {
+        throw new Exception('Prepare error: ' . $conn->error);
+    }
 
-log_message("SQL: $sql");
+    $status = 'Menunggu Verifikasi Pembayaran';
+    $stmt->bind_param(
+        'issssssssi',
+        $user_id,
+        $no_pengiriman,
+        $nama_penerima,
+        $no_telepon,
+        $email,
+        $alamat_lengkap,
+        $kota,
+        $kode_pos,
+        $metode_pengiriman,
+        $ongkir,
+        $status
+    );
 
-if (mysqli_query($conn, $sql)) {
-    $id_pengiriman = mysqli_insert_id($conn);
-    log_message("SUCCESS: Pengiriman created with ID: $id_pengiriman, No: $no_pengiriman");
+    if (!$stmt->execute()) {
+        throw new Exception('Execute error: ' . $stmt->error);
+    }
 
-    // Save to SESSION for next step
+    $id_pengiriman = $conn->insert_id;
+
+    // Store in session
     $_SESSION['id_pengiriman'] = $id_pengiriman;
-    $_SESSION['no_pengiriman'] = $no_pengiriman;
     $_SESSION['ongkir'] = $ongkir;
-    $_SESSION['shipping_method'] = $metode_pengiriman;
+    $_SESSION['subtotal'] = $_POST['subtotal'] ?? 0;
 
-    // Get cart info for session
-    $cart_sql = "SELECT SUM(c.qty * p.harga) as subtotal FROM keranjang c JOIN produk p ON c.id_produk = p.id_produk WHERE c.id_user = '$user_id'";
-    $cart_result = mysqli_query($conn, $cart_sql);
-    $cart_data = mysqli_fetch_assoc($cart_result);
-    
-    $_SESSION['subtotal'] = $cart_data['subtotal'] ?? 0;
-    $_SESSION['diskon'] = $_SESSION['diskon'] ?? 0;
-    $_SESSION['total_bayar'] = $_SESSION['subtotal'] - $_SESSION['diskon'] + $ongkir;
+    error_log('[SUCCESS] Pengiriman created: id=' . $id_pengiriman . ', no=' . $no_pengiriman);
 
-    log_message("Session saved: id_pengiriman=$id_pengiriman, ongkir=$ongkir");
-
-    http_response_code(200);
     echo json_encode([
         'success' => true,
         'message' => 'Data pengiriman berhasil disimpan',
-        'id_pengiriman' => $id_pengiriman,
-        'no_pengiriman' => $no_pengiriman,
-        'ongkir' => $ongkir
+        'id_pengiriman' => $id_pengiriman
     ]);
-} else {
-    log_message("ERROR: Database insert failed: " . mysqli_error($conn));
-    http_response_code(500);
+
+} catch (Exception $e) {
+    error_log('[ERROR] ' . $e->getMessage());
+    http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'Gagal menyimpan data pengiriman: ' . mysqli_error($conn)
+        'message' => $e->getMessage()
     ]);
 }
-
-mysqli_close($conn);
 ?>
