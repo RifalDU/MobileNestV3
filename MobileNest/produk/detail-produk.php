@@ -193,13 +193,18 @@ include '../includes/header.php';
         gap: 10px;
     }
 
-    .btn-add-to-cart:hover {
+    .btn-add-to-cart:hover:not(:disabled) {
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
     }
 
-    .btn-add-to-cart:active {
+    .btn-add-to-cart:active:not(:disabled) {
         transform: translateY(0);
+    }
+
+    .btn-add-to-cart:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
     }
 
     .description-section {
@@ -304,7 +309,7 @@ include '../includes/header.php';
                     </div>
 
                     <!-- Add to Cart Button -->
-                    <button class="btn-add-to-cart" type="button" onclick="handleAddToCart()">
+                    <button class="btn-add-to-cart" id="btn-add-cart" type="button" onclick="handleAddToCart()">
                         <i class="bi bi-cart-plus" style="font-size: 18px;"></i> Tambah Keranjang
                     </button>
                 </div>
@@ -326,6 +331,7 @@ include '../includes/header.php';
 
 <script>
 const maxQty = <?php echo $product['stok']; ?>;
+const productId = <?php echo $product['id_produk']; ?>;
 
 function increaseQuantity() {
     const qtyInput = document.getElementById('quantity');
@@ -345,48 +351,80 @@ function decreaseQuantity() {
 
 async function handleAddToCart() {
     const qty = parseInt(document.getElementById('quantity').value);
-    const id = <?php echo $product['id_produk']; ?>;
-    const btn = event.target.closest('button');
+    const btn = document.getElementById('btn-add-cart');
+    const originalHTML = btn.innerHTML;
+    
+    console.log('handleAddToCart called with qty:', qty, 'productId:', productId);
     
     // Disable button saat loading
     btn.disabled = true;
-    const originalText = btn.innerHTML;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Loading...';
     
     try {
-        const result = await addToCart(id, qty);
-        console.log('Add to cart result:', result);
+        console.log('Calling addToCart function...');
+        const result = await addToCart(productId, qty);
         
-        if (result.success) {
-            // Show success notification
-            const alert = document.createElement('div');
-            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-            alert.style.zIndex = '9999';
-            alert.innerHTML = `
-                <i class="bi bi-check-circle"></i> Produk berhasil ditambahkan ke keranjang!
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            document.body.appendChild(alert);
-            
-            // Reset quantity
-            document.getElementById('quantity').value = 1;
-            
-            // Update cart count
-            updateCartCount();
-            
-            // Remove alert after 3 seconds
-            setTimeout(() => alert.remove(), 3000);
-        } else {
-            console.error('Add to cart failed:', result);
-            alert('❌ Gagal menambahkan ke keranjang: ' + (result.message || 'Unknown error'));
+        console.log('Raw result:', result);
+        console.log('Result type:', typeof result);
+        console.log('Result is object:', result && typeof result === 'object');
+        
+        // Validasi result
+        if (!result) {
+            throw new Error('No response from server');
         }
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Unknown error occurred');
+        }
+        
+        // Success!
+        console.log('✅ Add to cart success!');
+        
+        // Show success notification
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+        alert.style.zIndex = '9999';
+        alert.innerHTML = `
+            <i class="bi bi-check-circle"></i> Produk berhasil ditambahkan ke keranjang!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alert);
+        
+        // Reset quantity
+        document.getElementById('quantity').value = 1;
+        
+        // Update cart count
+        if (typeof updateCartCount === 'function') {
+            updateCartCount();
+        }
+        
+        // Remove alert after 3 seconds
+        setTimeout(() => {
+            if (alert.parentNode) alert.remove();
+        }, 3000);
+        
     } catch (error) {
-        console.error('Error:', error);
-        alert('❌ Terjadi kesalahan: ' + error.message);
+        console.error('❌ Error:', error);
+        const errorMsg = error.message || 'Terjadi kesalahan sistem';
+        
+        // Show error notification
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+        alert.style.zIndex = '9999';
+        alert.innerHTML = `
+            <i class="bi bi-exclamation-circle"></i> ${errorMsg}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alert);
+        
+        setTimeout(() => {
+            if (alert.parentNode) alert.remove();
+        }, 4000);
+        
     } finally {
         // Re-enable button
         btn.disabled = false;
-        btn.innerHTML = originalText;
+        btn.innerHTML = originalHTML;
     }
 }
 </script>
