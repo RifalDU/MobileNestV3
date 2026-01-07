@@ -1,105 +1,51 @@
 <?php
 session_start();
-header('Content-Type: text/html; charset=utf-8');
-require_once '../config.php';
+require_once '../config/config.php';
 
-// Check if user logged in
-if (!isset($_SESSION['user_id'])) {
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['id_pengiriman'])) {
     header('Location: ../login.php');
-    exit;
-}
-
-if (!isset($_SESSION['id_pengiriman'])) {
-    header('Location: pengiriman.php');
-    exit;
+    exit();
 }
 
 $user_id = $_SESSION['user_id'];
 $id_pengiriman = $_SESSION['id_pengiriman'];
 
 // Get pengiriman data
-$pengiriman_sql = "SELECT * FROM pengiriman WHERE id_pengiriman = '$id_pengiriman' AND id_user = '$user_id'";
-$pengiriman_result = mysqli_query($conn, $pengiriman_sql);
-$pengiriman_data = mysqli_fetch_assoc($pengiriman_result);
+$query = "SELECT * FROM pengiriman WHERE id_pengiriman = ? AND id_user = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param('ii', $id_pengiriman, $user_id);
+$stmt->execute();
+$pengiriman = $stmt->get_result()->fetch_assoc();
 
-if (!$pengiriman_data) {
+if (!$pengiriman) {
     header('Location: pengiriman.php');
-    exit;
+    exit();
 }
 
-// Get cart items & calculate totals
-$cart_sql = "SELECT c.*, p.nama_produk, p.harga 
-             FROM keranjang c 
-             JOIN produk p ON c.id_produk = p.id_produk 
-             WHERE c.id_user = '$user_id'";
-$cart_result = mysqli_query($conn, $cart_sql);
+// Get cart items
+$query_cart = "SELECT k.*, p.nama_produk, p.harga FROM keranjang k 
+              JOIN produk p ON k.id_produk = p.id_produk 
+              WHERE k.id_user = ?";
+$stmt_cart = $conn->prepare($query_cart);
+$stmt_cart->bind_param('i', $user_id);
+$stmt_cart->execute();
+$cart_items = $stmt_cart->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $subtotal = 0;
-$cart_items = [];
-while ($row = mysqli_fetch_assoc($cart_result)) {
-    $subtotal += $row['harga'] * $row['qty'];
-    $cart_items[] = $row;
+foreach ($cart_items as $item) {
+    $subtotal += $item['harga'] * $item['qty'];
 }
 
-// Get voucher discount if exists
-$diskon = 0;
-if (isset($_SESSION['voucher_code'])) {
-    $voucher_sql = "SELECT * FROM voucher 
-                    WHERE kode_voucher = '{$_SESSION['voucher_code']}' 
-                    AND status_voucher = 'Aktif'";
-    $voucher_result = mysqli_query($conn, $voucher_sql);
-    
-    if (mysqli_num_rows($voucher_result) > 0) {
-        $voucher = mysqli_fetch_assoc($voucher_result);
-        $diskon = ($subtotal * $voucher['diskon']) / 100;
-    }
-}
-
-$ongkir = $pengiriman_data['ongkir'] ?? 0;
-$total_bayar = $subtotal - $diskon + $ongkir;
-
-// Payment methods
-$payment_methods = [
-    'bank_transfer' => [
-        'name' => 'Transfer Bank',
-        'icon' => '🏦',
-        'desc' => 'Transfer ke rekening bank kami'
-    ],
-    'ewallet' => [
-        'name' => 'E-Wallet',
-        'icon' => '📱',
-        'desc' => 'GCash, GoPay, OVO, Dana'
-    ],
-    'credit_card' => [
-        'name' => 'Kartu Kredit',
-        'icon' => '💳',
-        'desc' => 'Visa, Mastercard, JCB'
-    ],
-    'cod' => [
-        'name' => 'Bayar di Tempat (COD)',
-        'icon' => '🚚',
-        'desc' => 'Bayar saat barang tiba'
-    ]
-];
+$ongkir = $pengiriman['ongkir'];
+$total = $subtotal + $ongkir;
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pembayaran - MobileNest</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        :root {
-            --primary: #6366f1;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --light: #f3f4f6;
-            --dark: #1f2937;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -107,143 +53,43 @@ $payment_methods = [
         }
 
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 40px 20px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
         }
 
-        .container-main {
-            max-width: 1200px;
+        .container {
+            max-width: 900px;
             margin: 0 auto;
+            padding: 20px;
         }
 
-        .checkout-header {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
+        h1 {
             margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-size: 24px;
+            color: #222;
         }
 
-        .progress-steps {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .step {
-            flex: 1;
-            text-align: center;
-            position: relative;
-        }
-
-        .step-number {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #e5e7eb;
-            color: #6b7280;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 10px;
-            font-weight: bold;
-        }
-
-        .step.active .step-number {
-            background: var(--primary);
-            color: white;
-        }
-
-        .step.completed .step-number {
-            background: var(--success);
-            color: white;
-        }
-
-        .step-title {
-            font-size: 14px;
-            color: #6b7280;
-        }
-
-        .step.active .step-title {
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        .row-main {
+        .main-content {
             display: grid;
             grid-template-columns: 2fr 1fr;
-            gap: 30px;
-            align-items: start;
+            gap: 20px;
         }
 
         .form-section {
             background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-section h3 {
-            margin-bottom: 25px;
-            color: var(--dark);
-            font-size: 20px;
-            font-weight: 600;
-        }
-
-        .payment-info-box {
-            background: #f0f9ff;
-            border-left: 4px solid var(--primary);
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
-            margin-bottom: 25px;
-        }
-
-        .payment-info-box h4 {
-            margin-bottom: 10px;
-            color: var(--primary);
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .payment-info-box p {
-            margin: 0;
-            color: #666;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .countdown-timer {
-            background: #fef3c7;
-            border-left: 4px solid var(--warning);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 25px;
-            text-align: center;
-        }
-
-        .countdown-timer h4 {
-            color: var(--warning);
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .countdown-timer .timer {
-            font-size: 32px;
-            font-weight: bold;
-            color: var(--danger);
-            font-family: 'Courier New', monospace;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            color: var(--dark);
+            margin-bottom: 5px;
             font-weight: 500;
             font-size: 14px;
         }
@@ -252,584 +98,377 @@ $payment_methods = [
         .form-group select,
         .form-group textarea {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             font-size: 14px;
-            transition: all 0.3s ease;
             font-family: inherit;
         }
 
         .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
+        .form-group select:focus {
             outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
         }
 
-        .form-group textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-
+        /* Payment Methods */
         .payment-methods {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-top: 15px;
+            margin: 20px 0;
         }
 
-        .payment-method {
-            padding: 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .payment-method:hover {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.05);
-        }
-
-        .payment-method input[type="radio"] {
-            display: none;
-        }
-
-        .payment-method.selected {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.1);
-        }
-
-        .payment-icon {
-            font-size: 32px;
-            margin-bottom: 8px;
-        }
-
-        .payment-name {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 5px;
+        .payment-methods h3 {
             font-size: 14px;
+            margin-bottom: 10px;
+            font-weight: 600;
         }
 
-        .payment-desc {
-            font-size: 11px;
-            color: #6b7280;
+        .method-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
-        .file-upload-area {
-            border: 2px dashed #d1d5db;
-            border-radius: 8px;
+        .method-item:hover {
+            border-color: #007bff;
+            background: #f8f9ff;
+        }
+
+        .method-item input[type="radio"] {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .method-label {
+            flex: 1;
+            cursor: pointer;
+        }
+
+        /* File Upload */
+        .upload-area {
+            margin: 15px 0;
+        }
+
+        .upload-box {
+            border: 2px dashed #ddd;
+            border-radius: 4px;
             padding: 30px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: #f9fafb;
+            transition: all 0.2s;
+            background: #f8f9fa;
         }
 
-        .file-upload-area:hover {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.05);
+        .upload-box:hover {
+            border-color: #007bff;
+            background: #e3f2fd;
         }
 
-        .file-upload-area.active {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.1);
+        .upload-box.has-file {
+            border-color: #28a745;
+            background: #f1f8f4;
         }
 
-        .file-upload-area input[type="file"] {
+        .upload-box p {
+            margin: 10px 0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        #file-preview {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        #fileInput {
             display: none;
         }
 
-        .file-icon {
-            font-size: 40px;
-            margin-bottom: 10px;
-        }
-
-        .file-text {
-            color: #6b7280;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-
-        .file-hint {
-            color: #9ca3af;
-            font-size: 12px;
-        }
-
-        .file-preview {
-            margin-top: 15px;
-            padding: 15px;
-            background: #f3f4f6;
-            border-radius: 8px;
-            display: none;
-        }
-
-        .file-preview.active {
-            display: block;
-        }
-
-        .preview-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .preview-icon {
-            font-size: 24px;
-        }
-
-        .preview-details {
-            flex: 1;
-        }
-
-        .preview-name {
-            font-weight: 600;
-            color: var(--dark);
-            font-size: 14px;
-        }
-
-        .preview-size {
-            color: #6b7280;
-            font-size: 12px;
-        }
-
-        .preview-remove {
-            background: var(--danger);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
+        /* Sidebar */
         .sidebar {
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            position: sticky;
-            top: 20px;
-        }
-
-        .sidebar h4 {
-            margin-bottom: 20px;
-            color: var(--dark);
-            font-weight: 600;
-        }
-
-        .shipping-info {
-            background: #f3f4f6;
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            height: fit-content;
         }
 
-        .shipping-info-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 0;
-            font-size: 13px;
-            color: #6b7280;
-        }
-
-        .shipping-label {
+        .sidebar h3 {
+            font-size: 14px;
+            margin-bottom: 15px;
             font-weight: 600;
         }
 
-        .shipping-value {
-            text-align: right;
-            color: var(--dark);
+        .sidebar-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
         }
 
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid #e5e7eb;
-            font-size: 14px;
-        }
-
-        .cart-item:last-child {
+        .sidebar-section:last-child {
             border-bottom: none;
         }
 
-        .summary-row {
+        .sidebar-row {
             display: flex;
             justify-content: space-between;
-            padding: 12px 0;
+            margin: 5px 0;
+            font-size: 13px;
+        }
+
+        .sidebar-row.total {
+            font-weight: 600;
+            font-size: 16px;
+            color: #222;
+            margin-top: 10px;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
             font-size: 14px;
-            color: #6b7280;
-        }
-
-        .summary-row.total {
-            font-size: 18px;
-            font-weight: bold;
-            color: var(--dark);
-            padding: 15px 0;
-            border-top: 2px solid #e5e7eb;
-            margin-top: 15px;
-        }
-
-        .summary-row.total span:last-child {
-            color: var(--primary);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
         .btn-primary {
-            width: 100%;
-            padding: 14px;
-            background: var(--primary);
+            background: #007bff;
             color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: all 0.3s ease;
         }
 
-        .btn-primary:hover:not(:disabled) {
-            background: #4f46e5;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(99, 102, 241, 0.3);
+        .btn-primary:hover {
+            background: #0056b3;
         }
 
         .btn-primary:disabled {
-            opacity: 0.5;
+            background: #ccc;
             cursor: not-allowed;
         }
 
         .btn-secondary {
-            width: 100%;
-            padding: 12px;
-            background: white;
-            color: var(--primary);
-            border: 2px solid var(--primary);
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            margin-top: 10px;
-            transition: all 0.3s ease;
+            background: #6c757d;
+            color: white;
         }
 
         .btn-secondary:hover {
-            background: rgba(99, 102, 241, 0.05);
+            background: #545b62;
         }
 
-        .error-message {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+        .error {
+            color: #dc3545;
+            font-size: 13px;
+            margin-top: 5px;
+            padding: 10px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+        }
+
+        .success {
+            color: #155724;
+            font-size: 13px;
+            margin-top: 5px;
+            padding: 10px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+        }
+
+        .loading {
             display: none;
-        }
-
-        .success-message {
-            background: #dcfce7;
-            color: #166534;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        @media (max-width: 768px) {
-            .row-main {
-                grid-template-columns: 1fr;
-            }
-
-            .payment-methods {
-                grid-template-columns: 1fr;
-            }
-
-            .sidebar {
-                position: static;
-            }
+            font-size: 13px;
+            color: #007bff;
         }
     </style>
 </head>
 <body>
-    <div class="container-main">
-        <!-- Header -->
-        <div class="checkout-header">
-            <h1 style="color: var(--dark); margin-bottom: 20px;">MobileNest Checkout</h1>
-            <div class="progress-steps">
-                <div class="step completed">
-                    <div class="step-number">✓</div>
-                    <div class="step-title">Keranjang</div>
-                </div>
-                <div class="step completed">
-                    <div class="step-number">✓</div>
-                    <div class="step-title">Pengiriman</div>
-                </div>
-                <div class="step active">
-                    <div class="step-number">3</div>
-                    <div class="step-title">Pembayaran</div>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <div class="step-title">Selesai</div>
-                </div>
-            </div>
-        </div>
+    <div class="container">
+        <h1>💳 Konfirmasi Pembayaran</h1>
 
-        <!-- Main Content -->
-        <div class="row-main">
+        <div class="main-content">
             <!-- Form Section -->
-            <div class="form-section">
-                <h3>Konfirmasi Pembayaran</h3>
-
-                <div class="error-message" id="errorMsg"></div>
-                <div class="success-message" id="successMsg"></div>
-
-                <!-- Countdown Timer -->
-                <div class="countdown-timer">
-                    <h4>⏰ Waktu Pembayaran Terbatas</h4>
-                    <div class="timer" id="countdown">24:00:00</div>
-                    <p style="margin-top: 10px; font-size: 12px; color: #92400e;">Selesaikan pembayaran dalam 24 jam</p>
+            <form id="paymentForm" class="form-section" enctype="multipart/form-data">
+                <!-- Shipping Info -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="font-size: 14px; margin-bottom: 10px; font-weight: 600;">📦 Info Pengiriman</h3>
+                    <div style="font-size: 13px; line-height: 1.6;">
+                        <p><strong>Ke:</strong> <?php echo htmlspecialchars($pengiriman['nama_penerima']); ?></p>
+                        <p><strong>Alamat:</strong> <?php echo htmlspecialchars($pengiriman['alamat_lengkap']); ?></p>
+                        <p><strong>Metode:</strong> <?php echo ucfirst($pengiriman['metode_pengiriman']); ?></p>
+                    </div>
                 </div>
 
-                <!-- Pengiriman Summary -->
-                <div class="payment-info-box">
-                    <h4>📍 Informasi Pengiriman</h4>
-                    <p><strong>Penerima:</strong> <?php echo htmlspecialchars($pengiriman_data['nama_penerima']); ?></p>
-                    <p><strong>Alamat:</strong> <?php echo htmlspecialchars($pengiriman_data['alamat_lengkap']); ?>, <?php echo htmlspecialchars($pengiriman_data['kota']); ?>, <?php echo htmlspecialchars($pengiriman_data['provinsi']); ?> <?php echo htmlspecialchars($pengiriman_data['kode_pos']); ?></p>
-                    <p><strong>Metode:</strong> <?php echo ucfirst(str_replace('_', ' ', $pengiriman_data['metode_pengiriman'])); ?></p>
+                <!-- Payment Method -->
+                <div class="payment-methods">
+                    <h3>Metode Pembayaran</h3>
+                    
+                    <label class="method-item">
+                        <input type="radio" name="metode_pembayaran" value="bank_transfer" checked>
+                        <div class="method-label">🏦 Transfer Bank</div>
+                    </label>
+
+                    <label class="method-item">
+                        <input type="radio" name="metode_pembayaran" value="ewallet">
+                        <div class="method-label">📱 E-Wallet (OVO, GoPay, Dana)</div>
+                    </label>
+
+                    <label class="method-item">
+                        <input type="radio" name="metode_pembayaran" value="credit_card">
+                        <div class="method-label">💳 Kartu Kredit</div>
+                    </label>
+
+                    <label class="method-item">
+                        <input type="radio" name="metode_pembayaran" value="cod">
+                        <div class="method-label">🚚 Bayar di Tempat (COD)</div>
+                    </label>
                 </div>
 
-                <form id="paymentForm" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <label>Metode Pembayaran *</label>
-                        <div class="payment-methods">
-                            <?php foreach ($payment_methods as $key => $method): ?>
-                                <div class="payment-method" data-method="<?php echo $key; ?>">
-                                    <input type="radio" id="<?php echo $key; ?>" name="payment_method" value="<?php echo $key; ?>">
-                                    <label for="<?php echo $key; ?>" style="cursor: pointer; margin: 0;">
-                                        <div class="payment-icon"><?php echo $method['icon']; ?></div>
-                                        <div class="payment-name"><?php echo $method['name']; ?></div>
-                                        <div class="payment-desc"><?php echo $method['desc']; ?></div>
-                                    </label>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                <!-- Upload Bukti -->
+                <div class="form-group">
+                    <label>Upload Bukti Pembayaran *</label>
+                    <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+                        <p>📸 Klik atau drag file ke sini</p>
+                        <p style="font-size: 12px; color: #999;">JPG atau PNG, maksimal 5MB</p>
+                        <div id="file-preview"></div>
                     </div>
+                    <input type="file" id="fileInput" name="bukti_pembayaran" accept=".jpg,.jpeg,.png">
+                </div>
 
-                    <div class="form-group">
-                        <label for="nama_pengirim">Nama Pengirim *</label>
-                        <input type="text" id="nama_pengirim" name="nama_pengirim" placeholder="Nama sesuai rekening/kartu" required>
-                    </div>
+                <!-- Nama Pengirim -->
+                <div class="form-group">
+                    <label>Nama Pengirim (sesuai bukti) *</label>
+                    <input type="text" name="nama_pengirim" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="tanggal_transfer">Tanggal Transfer *</label>
-                        <input type="date" id="tanggal_transfer" name="tanggal_transfer" required>
-                    </div>
+                <!-- Tanggal Transfer -->
+                <div class="form-group">
+                    <label>Tanggal Transfer *</label>
+                    <input type="date" name="tanggal_transfer" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="bukti_pembayaran">Bukti Pembayaran (Foto/Screenshot) *</label>
-                        <div class="file-upload-area" id="uploadArea">
-                            <input type="file" id="bukti_pembayaran" name="bukti_pembayaran" accept="image/jpeg,image/png,image/jpg" required>
-                            <div class="file-icon">📸</div>
-                            <div class="file-text">Klik atau drag file untuk upload</div>
-                            <div class="file-hint">JPG atau PNG, maksimal 5MB</div>
-                        </div>
-                        <div class="file-preview" id="filePreview">
-                            <div class="preview-info">
-                                <div class="preview-icon">📄</div>
-                                <div class="preview-details">
-                                    <div class="preview-name" id="previewName"></div>
-                                    <div class="preview-size" id="previewSize"></div>
-                                </div>
-                                <button type="button" class="preview-remove" id="removeFile">Hapus</button>
-                            </div>
-                        </div>
-                    </div>
+                <div class="buttons">
+                    <button type="button" class="btn-secondary" onclick="history.back()">← Kembali</button>
+                    <button type="submit" class="btn-primary">Konfirmasi Pesanan →</button>
+                </div>
 
-                    <div class="form-group">
-                        <label for="catatan_pembayaran">Catatan (Opsional)</label>
-                        <textarea id="catatan_pembayaran" name="catatan_pembayaran" placeholder="Catatan tambahan untuk pembayaran..."></textarea>
-                    </div>
-
-                    <button type="submit" class="btn-primary" id="submitBtn">Konfirmasi & Buat Pesanan</button>
-                    <a href="pengiriman.php" class="btn-secondary">Kembali ke Pengiriman</a>
-                </form>
-            </div>
+                <div class="loading" id="loading">⏳ Processing...</div>
+                <div id="message"></div>
+            </form>
 
             <!-- Sidebar -->
             <div class="sidebar">
-                <h4>Ringkasan Pesanan</h4>
+                <h3>📋 Ringkasan Pesanan</h3>
 
-                <!-- Shipping Info -->
-                <div class="shipping-info">
-                    <div class="shipping-info-item">
-                        <span class="shipping-label">No. Pengiriman:</span>
-                        <span class="shipping-value"><?php echo htmlspecialchars($pengiriman_data['no_pengiriman']); ?></span>
+                <div class="sidebar-section">
+                    <?php foreach ($cart_items as $item): ?>
+                        <div class="sidebar-row">
+                            <span><?php echo htmlspecialchars($item['nama_produk']); ?> x<?php echo $item['qty']; ?></span>
+                            <span>Rp <?php echo number_format($item['harga'] * $item['qty']); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-row">
+                        <span>Subtotal</span>
+                        <span>Rp <?php echo number_format($subtotal); ?></span>
                     </div>
-                    <div class="shipping-info-item">
-                        <span class="shipping-label">Status:</span>
-                        <span class="shipping-value"><?php echo htmlspecialchars($pengiriman_data['status_pengiriman']); ?></span>
-                    </div>
-                    <div class="shipping-info-item">
-                        <span class="shipping-label">Metode:</span>
-                        <span class="shipping-value"><?php echo ucfirst(str_replace('_', ' ', $pengiriman_data['metode_pengiriman'])); ?></span>
+                    <div class="sidebar-row">
+                        <span>Ongkir</span>
+                        <span>Rp <?php echo number_format($ongkir); ?></span>
                     </div>
                 </div>
 
-                <!-- Cart Items -->
-                <?php foreach ($cart_items as $item): ?>
-                    <div class="cart-item">
-                        <span><?php echo htmlspecialchars($item['nama_produk']); ?> x <?php echo $item['qty']; ?></span>
-                        <span>Rp <?php echo number_format($item['harga'] * $item['qty'], 0, ',', '.'); ?></span>
+                <div class="sidebar-section">
+                    <div class="sidebar-row total">
+                        <span>Total Bayar</span>
+                        <span>Rp <?php echo number_format($total); ?></span>
                     </div>
-                <?php endforeach; ?>
-
-                <!-- Totals -->
-                <div class="summary-row">
-                    <span>Subtotal</span>
-                    <span>Rp <?php echo number_format($subtotal, 0, ',', '.'); ?></span>
-                </div>
-
-                <?php if ($diskon > 0): ?>
-                    <div class="summary-row">
-                        <span>Diskon</span>
-                        <span style="color: var(--success);">-Rp <?php echo number_format($diskon, 0, ',', '.'); ?></span>
-                    </div>
-                <?php endif; ?>
-
-                <div class="summary-row">
-                    <span>Ongkir</span>
-                    <span>Rp <?php echo number_format($ongkir, 0, ',', '.'); ?></span>
-                </div>
-
-                <div class="summary-row total">
-                    <span>Total Bayar</span>
-                    <span id="totalAmount">Rp <?php echo number_format($total_bayar, 0, ',', '.'); ?></span>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const totalBayar = <?php echo $total_bayar; ?>;
+        const fileInput = document.getElementById('fileInput');
+        const uploadBox = document.querySelector('.upload-box');
+        const filePreview = document.getElementById('file-preview');
+        const form = document.getElementById('paymentForm');
+        const messageDiv = document.getElementById('message');
+        const loadingDiv = document.getElementById('loading');
 
-        // Countdown timer
-        function startCountdown() {
-            let timeRemaining = 24 * 60 * 60; // 24 hours in seconds
-            
-            const timer = setInterval(() => {
-                const hours = Math.floor(timeRemaining / 3600);
-                const minutes = Math.floor((timeRemaining % 3600) / 60);
-                const seconds = timeRemaining % 60;
+        // File input events
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                const file = this.files[0];
+                const size = (file.size / 1024 / 1024).toFixed(2);
                 
-                document.getElementById('countdown').textContent = 
-                    String(hours).padStart(2, '0') + ':' +
-                    String(minutes).padStart(2, '0') + ':' +
-                    String(seconds).padStart(2, '0');
-                
-                timeRemaining--;
-                
-                if (timeRemaining < 0) {
-                    clearInterval(timer);
-                    document.getElementById('countdown').textContent = '00:00:00';
-                    document.getElementById('submitBtn').disabled = true;
-                    showError('Waktu pembayaran telah habis');
+                if (file.size > 5 * 1024 * 1024) {
+                    filePreview.textContent = '❌ File terlalu besar (max 5MB)';
+                    fileInput.value = '';
+                    uploadBox.classList.remove('has-file');
+                    return;
                 }
-            }, 1000);
-        }
 
-        // Payment method selection
-        document.querySelectorAll('.payment-method').forEach(method => {
-            method.addEventListener('click', () => {
-                document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('selected'));
-                method.classList.add('selected');
-                method.querySelector('input[type="radio"]').checked = true;
-            });
+                if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                    filePreview.textContent = '❌ Format hanya JPG atau PNG';
+                    fileInput.value = '';
+                    uploadBox.classList.remove('has-file');
+                    return;
+                }
+
+                filePreview.textContent = `✅ ${file.name} (${size}MB)`;
+                uploadBox.classList.add('has-file');
+            }
         });
 
-        // File upload handling
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('bukti_pembayaran');
-        const filePreview = document.getElementById('filePreview');
-
-        uploadArea.addEventListener('click', () => fileInput.click());
-
-        uploadArea.addEventListener('dragover', (e) => {
+        // Drag & drop
+        uploadBox.addEventListener('dragover', (e) => {
             e.preventDefault();
-            uploadArea.classList.add('active');
+            uploadBox.style.borderColor = '#007bff';
         });
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('active');
+        uploadBox.addEventListener('dragleave', () => {
+            uploadBox.style.borderColor = '#ddd';
         });
 
-        uploadArea.addEventListener('drop', (e) => {
+        uploadBox.addEventListener('drop', (e) => {
             e.preventDefault();
-            uploadArea.classList.remove('active');
+            uploadBox.style.borderColor = '#ddd';
             fileInput.files = e.dataTransfer.files;
-            handleFileSelect();
+            fileInput.dispatchEvent(new Event('change'));
         });
 
-        fileInput.addEventListener('change', handleFileSelect);
-
-        function handleFileSelect() {
-            const file = fileInput.files[0];
-            if (!file) return;
-
-            // Validate file type
-            if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
-                showError('Format file harus JPG atau PNG');
-                fileInput.value = '';
-                return;
-            }
-
-            // Validate file size (5MB)
-            if (file.size > 5 * 1024 * 1024) {
-                showError('Ukuran file maksimal 5MB');
-                fileInput.value = '';
-                return;
-            }
-
-            // Show preview
-            document.getElementById('previewName').textContent = file.name;
-            document.getElementById('previewSize').textContent = (file.size / 1024).toFixed(2) + ' KB';
-            filePreview.classList.add('active');
-        }
-
-        document.getElementById('removeFile').addEventListener('click', () => {
-            fileInput.value = '';
-            filePreview.classList.remove('active');
-        });
-
-        // Form submission
-        document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+        // Form submit
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const paymentMethod = document.querySelector('input[name="payment_method"]:checked');
-            if (!paymentMethod) {
-                showError('Pilih metode pembayaran');
+            if (!fileInput.files.length) {
+                messageDiv.className = 'error';
+                messageDiv.textContent = 'Harap upload bukti pembayaran';
                 return;
             }
 
-            if (!fileInput.files[0]) {
-                showError('Upload bukti pembayaran');
-                return;
-            }
+            loadingDiv.style.display = 'block';
+            messageDiv.textContent = '';
 
-            const formData = new FormData();
-            formData.append('payment_method', paymentMethod.value);
-            formData.append('nama_pengirim', document.getElementById('nama_pengirim').value);
-            formData.append('tanggal_transfer', document.getElementById('tanggal_transfer').value);
-            formData.append('bukti_pembayaran', fileInput.files[0]);
-            formData.append('catatan_pembayaran', document.getElementById('catatan_pembayaran').value);
-
-            document.getElementById('submitBtn').disabled = true;
+            const formData = new FormData(form);
 
             try {
                 const response = await fetch('../api/payment-handler.php', {
@@ -840,41 +479,23 @@ $payment_methods = [
                 const result = await response.json();
 
                 if (result.success) {
-                    showSuccess('Pesanan berhasil dibuat! Silahkan tunggu verifikasi pembayaran.');
+                    messageDiv.className = 'success';
+                    messageDiv.textContent = '✅ Pesanan berhasil dibuat! Redirecting...';
                     setTimeout(() => {
-                        window.location.href = 'order-success.php?id=' + result.id_pesanan + '&no=' + result.no_pesanan;
+                        window.location.href = 'order-success.php?id=' + result.id_pesanan;
                     }, 2000);
                 } else {
-                    showError(result.message);
-                    document.getElementById('submitBtn').disabled = false;
+                    messageDiv.className = 'error';
+                    messageDiv.textContent = result.message || 'Terjadi kesalahan';
+                    loadingDiv.style.display = 'none';
                 }
             } catch (error) {
-                showError('Terjadi kesalahan: ' + error.message);
-                document.getElementById('submitBtn').disabled = false;
+                console.error('Error:', error);
+                messageDiv.className = 'error';
+                messageDiv.textContent = 'Error: ' + error.message;
+                loadingDiv.style.display = 'none';
             }
         });
-
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMsg');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            window.scrollTo(0, 0);
-        }
-
-        function showSuccess(message) {
-            const successDiv = document.getElementById('successMsg');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            window.scrollTo(0, 0);
-        }
-
-        // Set today's date as default
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('tanggal_transfer').value = today;
-        document.getElementById('tanggal_transfer').min = today;
-
-        // Start countdown on page load
-        startCountdown();
     </script>
 </body>
 </html>
