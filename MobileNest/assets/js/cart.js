@@ -2,7 +2,7 @@
  * Cart Management - Handle cart display and interactions
  */
 
-const SHIPPING_COST = 20000; // Default shipping cost
+const SHIPPING_COST = 20000;
 
 /**
  * Update cart count badge in navbar
@@ -29,6 +29,11 @@ async function updateCartCount() {
  * Format price to Indonesian currency
  */
 function formatPrice(price) {
+    // Handle NaN or undefined
+    if (isNaN(price) || price === undefined || price === null) {
+        price = 0;
+    }
+    
     return new Intl.NumberFormat('id-ID', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
@@ -66,7 +71,7 @@ async function loadCartItems() {
         }
         
         // Empty cart
-        if (result.count === 0) {
+        if (!result.items || result.items.length === 0) {
             container.innerHTML = `
                 <div class="empty-cart-message">
                     <i class="bi bi-cart-x"></i>
@@ -87,20 +92,25 @@ async function loadCartItems() {
         let totalPrice = 0;
         
         result.items.forEach(item => {
-            const subtotal = item.harga * item.quantity;
+            // Ensure numeric types
+            const quantity = parseInt(item.quantity) || 0;
+            const harga = parseFloat(item.harga) || 0;
+            const subtotal = harga * quantity;
             totalPrice += subtotal;
+            
+            console.log(`Item: ${item.nama_produk}, Qty: ${quantity}, Price: ${harga}, Subtotal: ${subtotal}`);
             
             html += `
                 <div class="cart-item">
                     <img src="${item.gambar || '../assets/images/placeholder.jpg'}" alt="${item.nama_produk}">
                     <div class="cart-item-info">
                         <div class="cart-item-title">${item.nama_produk}</div>
-                        <div class="cart-item-price">Harga: Rp ${formatPrice(item.harga)}</div>
+                        <div class="cart-item-price">Harga: Rp ${formatPrice(harga)}</div>
                     </div>
                     <div class="quantity-control">
-                        <button onclick="updateQuantity(${item.id_produk}, ${item.quantity - 1})">-</button>
-                        <input type="number" value="${item.quantity}" readonly>
-                        <button onclick="updateQuantity(${item.id_produk}, ${item.quantity + 1})">+</button>
+                        <button onclick="updateQuantity(${item.id_produk}, ${quantity - 1})">-</button>
+                        <input type="number" value="${quantity}" readonly>
+                        <button onclick="updateQuantity(${item.id_produk}, ${quantity + 1})">+</button>
                     </div>
                     <div>
                         <div class="fw-bold" style="color: #667eea; margin-bottom: 10px;">Rp ${formatPrice(subtotal)}</div>
@@ -123,8 +133,10 @@ async function loadCartItems() {
         const shipping = SHIPPING_COST;
         const total = totalPrice + shipping - discount;
         
+        console.log(`Total calculation: ${totalPrice} + ${shipping} - ${discount} = ${total}`);
+        
         // Update summary
-        document.getElementById('total-items').textContent = result.count;
+        document.getElementById('total-items').textContent = result.items.length;
         document.getElementById('subtotal').textContent = 'Rp ' + formatPrice(totalPrice);
         document.getElementById('discount').textContent = '-Rp ' + formatPrice(discount);
         document.getElementById('shipping').textContent = 'Rp ' + formatPrice(shipping);
@@ -159,7 +171,7 @@ async function updateQuantity(id_produk, newQuantity) {
         updateCartCount();
         showNotification('success', 'Quantity berhasil diperbarui');
     } else {
-        alert('Gagal update quantity: ' + result.message);
+        showNotification('error', 'Gagal update quantity: ' + result.message);
     }
 }
 
