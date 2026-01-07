@@ -25,16 +25,236 @@ $brand_logo = get_brand_logo_data($product['merek']);
 include '../includes/header.php';
 ?>
 
+<style>
+    .product-image-container {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 400px;
+    }
+
+    .product-details-card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    }
+
+    .product-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: #2c3e50;
+        margin-bottom: 20px;
+    }
+
+    .brand-section {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .brand-logo {
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
+
+    .brand-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .brand-info {
+        flex: 1;
+    }
+
+    .brand-label {
+        font-size: 12px;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .brand-name {
+        font-size: 18px;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .price-section {
+        margin-bottom: 25px;
+    }
+
+    .product-price {
+        font-size: 36px;
+        font-weight: 700;
+        color: #667eea;
+        margin-bottom: 15px;
+    }
+
+    .stock-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 8px 15px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .action-section {
+        background: linear-gradient(135deg, #f8f9fa, #f0f2f5);
+        border-radius: 15px;
+        padding: 25px;
+        margin: 30px 0;
+    }
+
+    .quantity-section {
+        margin-bottom: 20px;
+    }
+
+    .quantity-label {
+        font-size: 14px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 10px;
+        display: block;
+    }
+
+    .quantity-control {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: fit-content;
+    }
+
+    .quantity-control button {
+        width: 40px;
+        height: 40px;
+        border: 2px solid #ddd;
+        background: white;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 18px;
+        transition: all 0.2s ease;
+    }
+
+    .quantity-control button:hover {
+        background: #f0f0f0;
+        border-color: #667eea;
+        color: #667eea;
+    }
+
+    .quantity-control input {
+        width: 60px;
+        height: 40px;
+        text-align: center;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        padding: 8px;
+        font-weight: 600;
+        font-size: 16px;
+    }
+
+    .quantity-control input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn-add-to-cart {
+        width: 100%;
+        padding: 16px 25px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-weight: 600;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .btn-add-to-cart:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-add-to-cart:active {
+        transform: translateY(0);
+    }
+
+    .description-section {
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 2px solid #f0f0f0;
+    }
+
+    .description-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #2c3e50;
+        margin-bottom: 20px;
+    }
+
+    .description-content {
+        color: #555;
+        line-height: 1.8;
+        font-size: 15px;
+    }
+
+    .breadcrumb-custom {
+        margin-bottom: 30px;
+    }
+
+    .breadcrumb-custom a {
+        color: #667eea;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .breadcrumb-custom a:hover {
+        text-decoration: underline;
+    }
+</style>
+
 <div class="container py-5">
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm">
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb-custom mb-4" aria-label="breadcrumb">
+        <a href="../index.php"><i class="bi bi-house"></i> Home</a>
+        <span class="mx-2" style="color: #ddd;">/</span>
+        <a href="list-produk.php">Produk</a>
+        <span class="mx-2" style="color: #ddd;">/</span>
+        <span style="color: #7f8c8d;"><?php echo htmlspecialchars($product['nama_produk']); ?></span>
+    </nav>
+
+    <div class="row g-4">
+        <!-- Product Image -->
+        <div class="col-lg-5">
+            <div class="product-image-container">
                 <?php
-                    $img_path = "../uploads/" . $product['gambar'];
                     if (!empty($product['gambar']) && file_exists("../uploads/" . $product['gambar'])) {
-                        echo '<img src="'.$img_path.'" class="img-fluid rounded" alt="'.htmlspecialchars($product['nama_produk']).'">';
+                        echo '<img src="../uploads/' . htmlspecialchars($product['gambar']) . '" class="img-fluid" alt="' . htmlspecialchars($product['nama_produk']) . '" style="max-width: 100%; max-height: 450px; object-fit: contain;">';
                     } else {
-                        echo '<div class="card-body text-center bg-light d-flex align-items-center justify-content-center" style="min-height: 400px;">
+                        echo '<div class="text-center" style="width: 100%;">
                                 <i class="bi bi-phone" style="font-size: 5rem; color: #ccc;"></i>
                               </div>';
                     }
@@ -42,79 +262,131 @@ include '../includes/header.php';
             </div>
         </div>
         
-        <div class="col-md-8">
-            <nav aria-label="breadcrumb" class="mb-4">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="../index.php">Home</a></li>
-                    <li class="breadcrumb-item"><a href="list-produk.php">Produk</a></li>
-                    <li class="breadcrumb-item active"><?php echo htmlspecialchars($product['nama_produk']); ?></li>
-                </ol>
-            </nav>
-            
-            <h1 class="mb-3"><?php echo htmlspecialchars($product['nama_produk']); ?></h1>
-            
-            <!-- Brand dengan Logo -->
-            <div class="d-flex align-items-center gap-3 mb-3">
-                <?php if ($brand_logo): ?>
-                    <div style="width: 40px; height: 40px;">
-                        <img src="<?php echo htmlspecialchars($brand_logo['image_url']); ?>" 
-                             alt="<?php echo htmlspecialchars($brand_logo['alt']); ?>" 
-                             style="width: 100%; height: 100%; object-fit: contain;">
+        <!-- Product Details -->
+        <div class="col-lg-7">
+            <div class="product-details-card">
+                <!-- Product Title -->
+                <h1 class="product-title"><?php echo htmlspecialchars($product['nama_produk']); ?></h1>
+                
+                <!-- Brand Section -->
+                <div class="brand-section">
+                    <div class="brand-logo">
+                        <?php if ($brand_logo): ?>
+                            <img src="<?php echo htmlspecialchars($brand_logo['image_url']); ?>" alt="<?php echo htmlspecialchars($brand_logo['alt']); ?>">
+                        <?php else: ?>
+                            <i class="bi bi-phone" style="font-size: 24px; color: #667eea;"></i>
+                        <?php endif; ?>
                     </div>
-                <?php endif; ?>
-                <div>
-                    <p class="text-muted mb-0">Merek:</p>
-                    <p class="mb-0"><strong><?php echo htmlspecialchars($product['merek']); ?></strong></p>
+                    <div class="brand-info">
+                        <div class="brand-label">Merek</div>
+                        <div class="brand-name"><?php echo htmlspecialchars($product['merek']); ?></div>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="row mt-4">
-                <div class="col-md-8">
-                    <h3 class="text-primary fw-bold mb-3">
-                        Rp <?php echo number_format($product['harga'], 0, ',', '.'); ?>
-                    </h3>
-                    
-                    <div class="mb-3">
-                        <span class="badge bg-success">Stok: <?php echo $product['stok']; ?> unit</span>
-                    </div>
-                    
-                    <div class="d-flex align-items-center gap-3 mb-4">
-                        <div class="input-group" style="width: 130px;">
-                            <span class="input-group-text">Qty</span>
-                            <input type="number" class="form-control text-center" id="quantity" min="1" max="<?php echo $product['stok']; ?>" value="1">
+
+                <!-- Price Section -->
+                <div class="price-section">
+                    <div class="product-price">Rp <?php echo number_format($product['harga'], 0, ',', '.'); ?></div>
+                    <span class="stock-badge">
+                        <i class="bi bi-check-circle"></i> Stok: <?php echo $product['stok']; ?> unit
+                    </span>
+                </div>
+
+                <!-- Action Section -->
+                <div class="action-section">
+                    <!-- Quantity Control -->
+                    <div class="quantity-section">
+                        <label class="quantity-label">Jumlah Produk</label>
+                        <div class="quantity-control">
+                            <button type="button" onclick="decreaseQuantity()" title="Kurangi">−</button>
+                            <input type="number" id="quantity" min="1" max="<?php echo $product['stok']; ?>" value="1" readonly>
+                            <button type="button" onclick="increaseQuantity()" title="Tambah">+</button>
                         </div>
-                        <button class="btn btn-primary btn-lg" type="button" onclick="handleAddToCart()">
-                            <i class="bi bi-cart-plus"></i> Tambah Keranjang
-                        </button>
+                    </div>
+
+                    <!-- Add to Cart Button -->
+                    <button class="btn-add-to-cart" type="button" onclick="handleAddToCart()">
+                        <i class="bi bi-cart-plus" style="font-size: 18px;"></i> Tambah Keranjang
+                    </button>
+                </div>
+
+                <!-- Description -->
+                <div class="description-section">
+                    <h4 class="description-title">Deskripsi Produk</h4>
+                    <div class="description-content">
+                        <?php echo nl2br(htmlspecialchars($product['deskripsi'])); ?>
                     </div>
                 </div>
             </div>
-            
-            <hr>
-            <h4>Deskripsi</h4>
-            <p><?php echo nl2br(htmlspecialchars($product['deskripsi'])); ?></p>
         </div>
     </div>
 </div>
 
+<script src="../assets/js/api-handler.js"></script>
+<script src="../assets/js/cart.js"></script>
+
 <script>
+const maxQty = <?php echo $product['stok']; ?>;
+
+function increaseQuantity() {
+    const qtyInput = document.getElementById('quantity');
+    const currentQty = parseInt(qtyInput.value);
+    if (currentQty < maxQty) {
+        qtyInput.value = currentQty + 1;
+    }
+}
+
+function decreaseQuantity() {
+    const qtyInput = document.getElementById('quantity');
+    const currentQty = parseInt(qtyInput.value);
+    if (currentQty > 1) {
+        qtyInput.value = currentQty - 1;
+    }
+}
+
 async function handleAddToCart() {
     const qty = parseInt(document.getElementById('quantity').value);
     const id = <?php echo $product['id_produk']; ?>;
+    const btn = event.target.closest('button');
     
-    // Panggil fungsi dari api-handler.js
-    // Kita gunakan showNotification dari cart.js
+    // Disable button saat loading
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Loading...';
+    
     try {
         const result = await addToCart(id, qty);
+        console.log('Add to cart result:', result);
+        
         if (result.success) {
-            showNotification('success', 'Berhasil ditambahkan ke keranjang!');
-            updateCartCount(); // Update badge di navbar
+            // Show success notification
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '9999';
+            alert.innerHTML = `
+                <i class="bi bi-check-circle"></i> Produk berhasil ditambahkan ke keranjang!
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            
+            // Reset quantity
+            document.getElementById('quantity').value = 1;
+            
+            // Update cart count
+            updateCartCount();
+            
+            // Remove alert after 3 seconds
+            setTimeout(() => alert.remove(), 3000);
         } else {
-            showNotification('error', 'Gagal: ' + result.message);
+            console.error('Add to cart failed:', result);
+            alert('❌ Gagal menambahkan ke keranjang: ' + (result.message || 'Unknown error'));
         }
-    } catch (e) {
-        console.error(e);
-        alert('Terjadi kesalahan sistem');
+    } catch (error) {
+        console.error('Error:', error);
+        alert('❌ Terjadi kesalahan: ' + error.message);
+    } finally {
+        // Re-enable button
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 </script>
