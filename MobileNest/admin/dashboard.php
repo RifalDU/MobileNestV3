@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin Dashboard
+ * Admin Dashboard - Alternative view
  * Only accessible by admin users
  * Includes role check middleware
  */
@@ -10,11 +10,7 @@ require_once '../api/auth/check_auth.php';
 // Check if user is admin
 if ($user_role !== 'admin') {
     http_response_code(403);
-    echo '<div style="text-align: center; padding: 50px; background: #fee; color: #c33; border-radius: 8px; margin: 20px;">';
-    echo '<h2>❌ Access Denied!</h2>';
-    echo '<p>Only administrators can access this page.</p>';
-    echo '<a href="../login.php">Go to Login</a>';
-    echo '</div>';
+    header('Location: ../index.php');
     exit();
 }
 
@@ -46,10 +42,18 @@ if ($user_role !== 'admin') {
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
         
         .navbar h2 {
             font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .navbar h2:hover {
+            opacity: 0.9;
         }
         
         .user-info {
@@ -200,18 +204,29 @@ if ($user_role !== 'admin') {
             font-weight: 600;
             color: #667eea;
         }
+
+        @media (max-width: 768px) {
+            .user-info {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .navbar h2 {
+                font-size: 18px;
+            }
+        }
     </style>
 </head>
 <body>
     <!-- Navbar -->
     <div class="navbar">
         <div>
-            <h2>🏢 MobileNest Admin</h2>
+            <h2 onclick="location.href='index.php'" title="Go to main dashboard">🏢 MobileNest Admin</h2>
         </div>
         <div class="user-info">
             <span class="badge-admin">👤 ADMIN</span>
             <span><?= htmlspecialchars($nama_lengkap) ?></span>
-            <a href="../api/auth/logout.php" class="btn-logout">🚪 Logout</a>
+            <a href="../user/logout.php" class="btn-logout">🚪 Logout</a>
         </div>
     </div>
     
@@ -225,8 +240,8 @@ if ($user_role !== 'admin') {
             <div class="user-details">
                 <strong>Login Info:</strong><br>
                 Username: <strong><?= htmlspecialchars($username) ?></strong><br>
-                Email: <strong><?= htmlspecialchars($_SESSION['email'] ?? 'N/A') ?></strong><br>
-                Login Time: <strong><?= date('d M Y H:i:s', $_SESSION['login_time'] ?? time()) ?></strong>
+                Email: <strong><?= htmlspecialchars($email) ?></strong><br>
+                Login Time: <strong><?= isset($_SESSION['login_time']) ? date('d M Y H:i:s', $_SESSION['login_time']) : 'N/A' ?></strong>
             </div>
         </div>
         
@@ -255,56 +270,29 @@ if ($user_role !== 'admin') {
         <div class="menu-section">
             <h2>⚙️ Management Menu</h2>
             <div class="menu-grid">
-                <a href="manage-products.php" class="menu-item">
+                <a href="kelola-produk.php" class="menu-item">
                     <div class="menu-item-icon">📦</div>
                     <div class="menu-item-title">Kelola Produk</div>
                     <div class="menu-item-desc">Tambah, edit, hapus produk</div>
                 </a>
                 
-                <a href="manage-users.php" class="menu-item">
+                <a href="kelola-users.php" class="menu-item">
                     <div class="menu-item-icon">👥</div>
                     <div class="menu-item-title">Kelola Pengguna</div>
                     <div class="menu-item-desc">Manage akun customer</div>
                 </a>
                 
-                <a href="manage-orders.php" class="menu-item">
+                <a href="kelola-transaksi.php" class="menu-item">
                     <div class="menu-item-icon">📋</div>
                     <div class="menu-item-title">Kelola Pesanan</div>
                     <div class="menu-item-desc">Lihat & proses pesanan</div>
                 </a>
                 
-                <a href="manage-promos.php" class="menu-item">
-                    <div class="menu-item-icon">🎁</div>
-                    <div class="menu-item-title">Kelola Promosi</div>
-                    <div class="menu-item-desc">Buat dan kelola promo</div>
-                </a>
-                
-                <a href="reports.php" class="menu-item">
+                <a href="laporan.php" class="menu-item">
                     <div class="menu-item-icon">📊</div>
                     <div class="menu-item-title">Laporan & Analitik</div>
                     <div class="menu-item-desc">Analisis penjualan</div>
                 </a>
-                
-                <a href="settings.php" class="menu-item">
-                    <div class="menu-item-icon">⚙️</div>
-                    <div class="menu-item-title">Pengaturan Sistem</div>
-                    <div class="menu-item-desc">Konfigurasi aplikasi</div>
-                </a>
-            </div>
-        </div>
-        
-        <!-- Features Coming Soon -->
-        <div class="menu-section">
-            <h2>🚀 Coming Soon</h2>
-            <div style="background: white; padding: 20px; border-radius: 12px; color: #666;">
-                <p>Fitur tambahan akan segera diluncurkan:</p>
-                <ul style="margin-left: 20px; margin-top: 10px;">
-                    <li>Dashboard dengan grafik real-time</li>
-                    <li>Email notifications untuk pesanan baru</li>
-                    <li>Backup otomatis database</li>
-                    <li>User activity logging</li>
-                    <li>Advanced reporting & export</li>
-                </ul>
             </div>
         </div>
     </div>
