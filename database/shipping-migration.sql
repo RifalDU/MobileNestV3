@@ -1,9 +1,22 @@
 -- ============================================
 -- Database Migration for Shipping & Orders
 -- MobileNest E-Commerce Platform
+-- 
+-- IMPORTANT: Make sure:
+-- 1. Table 'pengguna' or 'users' exists
+-- 2. Table 'produk' exists
+-- 3. Run queries ONE BY ONE in phpMyAdmin
 -- ============================================
 
--- Tabel untuk data pengiriman
+-- ⚠️ OPTIONAL: Drop existing tables if error
+-- Uncomment these lines if you get foreign key errors
+-- DROP TABLE IF EXISTS `detail_pesanan`;
+-- DROP TABLE IF EXISTS `pesanan`;
+-- DROP TABLE IF EXISTS `pengiriman`;
+
+-- ============================================
+-- Tabel untuk data pengiriman (Shipping)
+-- ============================================
 CREATE TABLE IF NOT EXISTS `pengiriman` (
   `id_pengiriman` INT NOT NULL AUTO_INCREMENT,
   `id_user` INT NOT NULL,
@@ -26,11 +39,15 @@ CREATE TABLE IF NOT EXISTS `pengiriman` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_pengiriman`),
-  KEY `fk_pengiriman_user` (`id_user`),
-  FOREIGN KEY (`id_user`) REFERENCES `pengguna` (`id_user`) ON DELETE CASCADE
+  KEY `idx_id_user` (`id_user`),
+  KEY `idx_no_pengiriman` (`no_pengiriman`),
+  KEY `idx_status` (`status_pengiriman`),
+  CONSTRAINT `fk_pengiriman_user` FOREIGN KEY (`id_user`) REFERENCES `pengguna` (`id_user`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tabel untuk data pesanan
+-- ============================================
+-- Tabel untuk data pesanan (Orders)
+-- ============================================
 CREATE TABLE IF NOT EXISTS `pesanan` (
   `id_pesanan` INT NOT NULL AUTO_INCREMENT,
   `id_user` INT NOT NULL,
@@ -51,13 +68,17 @@ CREATE TABLE IF NOT EXISTS `pesanan` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_pesanan`),
-  KEY `fk_pesanan_user` (`id_user`),
-  KEY `fk_pesanan_pengiriman` (`id_pengiriman`),
-  FOREIGN KEY (`id_user`) REFERENCES `pengguna` (`id_user`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_pengiriman`) REFERENCES `pengiriman` (`id_pengiriman`) ON DELETE CASCADE
+  KEY `idx_id_user` (`id_user`),
+  KEY `idx_id_pengiriman` (`id_pengiriman`),
+  KEY `idx_no_pesanan` (`no_pesanan`),
+  KEY `idx_status` (`status_pesanan`),
+  CONSTRAINT `fk_pesanan_user` FOREIGN KEY (`id_user`) REFERENCES `pengguna` (`id_user`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pesanan_pengiriman` FOREIGN KEY (`id_pengiriman`) REFERENCES `pengiriman` (`id_pengiriman`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tabel untuk detail pesanan (item per order)
+-- ============================================
+-- Tabel untuk detail pesanan (Order Items)
+-- ============================================
 CREATE TABLE IF NOT EXISTS `detail_pesanan` (
   `id_detail_pesanan` INT NOT NULL AUTO_INCREMENT,
   `id_pesanan` INT NOT NULL,
@@ -68,33 +89,26 @@ CREATE TABLE IF NOT EXISTS `detail_pesanan` (
   `subtotal` INT NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_detail_pesanan`),
-  KEY `fk_detail_pesanan_order` (`id_pesanan`),
-  KEY `fk_detail_pesanan_produk` (`id_produk`),
-  FOREIGN KEY (`id_pesanan`) REFERENCES `pesanan` (`id_pesanan`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_produk`) REFERENCES `produk` (`id_produk`) ON DELETE RESTRICT
+  KEY `idx_id_pesanan` (`id_pesanan`),
+  KEY `idx_id_produk` (`id_produk`),
+  CONSTRAINT `fk_detail_pesanan_order` FOREIGN KEY (`id_pesanan`) REFERENCES `pesanan` (`id_pesanan`) ON DELETE CASCADE,
+  CONSTRAINT `fk_detail_pesanan_produk` FOREIGN KEY (`id_produk`) REFERENCES `produk` (`id_produk`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
--- Indexes untuk performa query
+-- Verification Queries
 -- ============================================
-
-ALTER TABLE `pengiriman` ADD INDEX `idx_id_user_tanggal` (`id_user`, `tanggal_pengiriman`);
-ALTER TABLE `pengiriman` ADD INDEX `idx_no_pengiriman` (`no_pengiriman`);
-ALTER TABLE `pengiriman` ADD INDEX `idx_status` (`status_pengiriman`);
-
-ALTER TABLE `pesanan` ADD INDEX `idx_id_user_tanggal` (`id_user`, `tanggal_pesanan`);
-ALTER TABLE `pesanan` ADD INDEX `idx_no_pesanan` (`no_pesanan`);
-ALTER TABLE `pesanan` ADD INDEX `idx_status` (`status_pesanan`);
-
-ALTER TABLE `detail_pesanan` ADD INDEX `idx_id_pesanan` (`id_pesanan`);
-
--- ============================================
--- Verifikasi: Check tables created
--- ============================================
--- Run these queries to verify:
+-- Run these to verify tables were created:
+-- 
 -- SHOW TABLES LIKE 'pengiriman';
 -- SHOW TABLES LIKE 'pesanan';
 -- SHOW TABLES LIKE 'detail_pesanan';
+-- 
 -- DESCRIBE pengiriman;
 -- DESCRIBE pesanan;
 -- DESCRIBE detail_pesanan;
+-- 
+-- Check foreign keys:
+-- SELECT CONSTRAINT_NAME, TABLE_NAME, REFERENCED_TABLE_NAME 
+-- FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+-- WHERE TABLE_NAME IN ('pengiriman', 'pesanan', 'detail_pesanan');
