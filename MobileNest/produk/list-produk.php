@@ -194,14 +194,11 @@ include '../includes/header.php';
                                 <!-- Price -->
                                 <h5 class="text-primary mb-3">Rp <?php echo number_format($produk['harga'], 0, ',', '.'); ?></h5>
                                 
-                                <!-- Buttons -->
+                                <!-- Button (Only Lihat Detail) -->
                                 <div class="d-grid gap-2">
-                                    <a href="detail-produk.php?id=<?php echo $produk['id_produk']; ?>" class="btn btn-outline-primary btn-sm">
+                                    <a href="detail-produk.php?id=<?php echo $produk['id_produk']; ?>" class="btn btn-primary btn-sm">
                                         <i class="bi bi-search"></i> Lihat Detail
                                     </a>
-                                    <button class="btn btn-primary btn-sm" onclick="addToCart(<?php echo $produk['id_produk']; ?>, 1)">
-                                        <i class="bi bi-cart-plus"></i> Tambah Keranjang
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -224,56 +221,12 @@ include '../includes/header.php';
     var productCount = document.querySelectorAll('.product-card').length;
     document.getElementById('product_count').textContent = productCount;
     
-    console.log('list-produk.php loaded (Hybrid Mode)');
+    console.log('list-produk.php loaded');
     console.log('Initial products loaded:', productCount);
     console.log('products_container element:', document.getElementById('products_container'));
 </script>
 
 <!-- Load filter.js FIRST (for AJAX filtering) -->
 <script src="../assets/js/filter.js"></script>
-
-<!-- Load cart functionality -->
-<script src="../assets/js/cart.js"></script>
-<script src="../assets/js/api-handler.js"></script>
-
-<script>
-/**
- * Override addToCart to add notification
- * This wraps the API handler function
- */
-const originalAddToCart = window.addToCart;
-window.addToCart = async function(id_produk, quantity = 1) {
-    console.log('Adding to cart from list:', id_produk, quantity);
-    
-    try {
-        const result = await originalAddToCart(id_produk, quantity);
-        console.log('Result:', result);
-        
-        if (result.success) {
-            // Show success notification
-            const alert = document.createElement('div');
-            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-            alert.style.zIndex = '9999';
-            alert.innerHTML = `
-                <i class="bi bi-check-circle"></i> Produk berhasil ditambahkan ke keranjang!
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            document.body.appendChild(alert);
-            
-            // Update cart count in navbar
-            updateCartCount();
-            
-            // Remove alert after 3 seconds
-            setTimeout(() => alert.remove(), 3000);
-        } else {
-            console.error('Add to cart failed:', result);
-            alert('Gagal menambahkan ke keranjang: ' + (result.message || 'Unknown error'));
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Terjadi kesalahan: ' + error.message);
-    }
-};
-</script>
 
 <?php include '../includes/footer.php'; ?>
