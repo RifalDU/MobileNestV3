@@ -194,7 +194,7 @@ if (isset($_GET['edit'])) {
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="dashboard.php">MobileNest Admin</a>
+    <a class="navbar-brand" href="index.php">MobileNest Admin</a>
     <div class="collapse navbar-collapse">
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link active" href="kelola-produk.php">Kelola Produk</a></li>
