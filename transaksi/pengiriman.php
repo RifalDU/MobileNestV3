@@ -1,78 +1,49 @@
 <?php
 session_start();
-header('Content-Type: text/html; charset=utf-8');
-require_once '../config.php';
+require_once '../config/config.php';
 
 // Check if user logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../login.php');
-    exit;
+    exit();
 }
 
 $user_id = $_SESSION['user_id'];
 
-// Get user data for form pre-fill
-$user_sql = "SELECT * FROM pengguna WHERE id_user = '$user_id'";
-$user_result = mysqli_query($conn, $user_sql);
-$user_data = mysqli_fetch_assoc($user_result);
+// Get user data
+$query = "SELECT nama_pengguna, no_telepon, email FROM pengguna WHERE id_user = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$user = $result->fetch_assoc();
 
 // Get cart items & calculate subtotal
-$cart_sql = "SELECT c.*, p.nama_produk, p.harga 
-             FROM keranjang c 
-             JOIN produk p ON c.id_produk = p.id_produk 
-             WHERE c.id_user = '$user_id'";
-$cart_result = mysqli_query($conn, $cart_sql);
+$query_cart = "SELECT k.*, p.nama_produk, p.harga FROM keranjang k 
+              JOIN produk p ON k.id_produk = p.id_produk 
+              WHERE k.id_user = ?";
+$stmt_cart = $conn->prepare($query_cart);
+$stmt_cart->bind_param('i', $user_id);
+$stmt_cart->execute();
+$cart_result = $stmt_cart->get_result();
+$cart_items = $cart_result->fetch_all(MYSQLI_ASSOC);
 
 $subtotal = 0;
-$cart_items = [];
-while ($row = mysqli_fetch_assoc($cart_result)) {
-    $subtotal += $row['harga'] * $row['qty'];
-    $cart_items[] = $row;
+foreach ($cart_items as $item) {
+    $subtotal += $item['harga'] * $item['qty'];
 }
 
-// Get voucher discount if exists
-$diskon = 0;
-if (isset($_SESSION['voucher_code'])) {
-    $voucher_sql = "SELECT * FROM voucher 
-                    WHERE kode_voucher = '{$_SESSION['voucher_code']}' 
-                    AND status_voucher = 'Aktif'";
-    $voucher_result = mysqli_query($conn, $voucher_sql);
-    
-    if (mysqli_num_rows($voucher_result) > 0) {
-        $voucher = mysqli_fetch_assoc($voucher_result);
-        $diskon = ($subtotal * $voucher['diskon']) / 100;
-    }
-}
-
-// Shipping costs
-$shipping_costs = [
-    'regular' => 20000,
-    'express' => 50000,
-    'same_day' => 100000
-];
-
-$selected_shipping = isset($_SESSION['shipping_method']) ? $_SESSION['shipping_method'] : 'regular';
-$ongkir = $shipping_costs[$selected_shipping] ?? 20000;
-$total = $subtotal - $diskon + $ongkir;
+// Default shipping cost
+$shipping_cost = 20000; // Regular
+$shipping_method = 'regular';
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pengiriman - MobileNest</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        :root {
-            --primary: #6366f1;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --light: #f3f4f6;
-            --dark: #1f2937;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -80,99 +51,43 @@ $total = $subtotal - $diskon + $ongkir;
         }
 
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 40px 20px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
         }
 
-        .container-main {
-            max-width: 1200px;
+        .container {
+            max-width: 900px;
             margin: 0 auto;
+            padding: 20px;
         }
 
-        .checkout-header {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
+        h1 {
             margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-size: 24px;
+            color: #222;
         }
 
-        .progress-steps {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .step {
-            flex: 1;
-            text-align: center;
-            position: relative;
-        }
-
-        .step-number {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #e5e7eb;
-            color: #6b7280;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 10px;
-            font-weight: bold;
-        }
-
-        .step.active .step-number {
-            background: var(--primary);
-            color: white;
-        }
-
-        .step.completed .step-number {
-            background: var(--success);
-            color: white;
-        }
-
-        .step-title {
-            font-size: 14px;
-            color: #6b7280;
-        }
-
-        .step.active .step-title {
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        .row-main {
+        .main-content {
             display: grid;
             grid-template-columns: 2fr 1fr;
-            gap: 30px;
-            align-items: start;
+            gap: 20px;
         }
 
         .form-section {
             background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-section h3 {
-            margin-bottom: 25px;
-            color: var(--dark);
-            font-size: 20px;
-            font-weight: 600;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            color: var(--dark);
+            margin-bottom: 5px;
             font-weight: 500;
             font-size: 14px;
         }
@@ -181,11 +96,10 @@ $total = $subtotal - $diskon + $ongkir;
         .form-group select,
         .form-group textarea {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
             font-size: 14px;
-            transition: all 0.3s ease;
             font-family: inherit;
         }
 
@@ -193,400 +107,295 @@ $total = $subtotal - $diskon + $ongkir;
         .form-group select:focus,
         .form-group textarea:focus {
             outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
         }
 
         .form-group textarea {
             resize: vertical;
-            min-height: 80px;
+            min-height: 60px;
         }
 
-        .shipping-options {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 15px;
+        /* Shipping Methods */
+        .shipping-methods {
+            margin: 20px 0;
         }
 
-        .shipping-option {
-            padding: 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .shipping-option:hover {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.05);
-        }
-
-        .shipping-option input[type="radio"] {
-            display: none;
-        }
-
-        .shipping-option input[type="radio"]:checked + label {
-            color: var(--primary);
-        }
-
-        .shipping-option.selected {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.1);
-        }
-
-        .shipping-name {
+        .shipping-methods h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
             font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 5px;
         }
 
-        .shipping-price {
-            font-size: 16px;
-            font-weight: bold;
-            color: var(--primary);
+        .method-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
-        .shipping-time {
-            font-size: 12px;
-            color: #6b7280;
+        .method-item:hover {
+            border-color: #007bff;
+            background: #f8f9ff;
         }
 
+        .method-item input[type="radio"] {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .method-label {
+            flex: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .method-name {
+            font-weight: 500;
+        }
+
+        .method-cost {
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        /* Sidebar */
         .sidebar {
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            position: sticky;
-            top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            height: fit-content;
         }
 
-        .sidebar h4 {
-            margin-bottom: 20px;
-            color: var(--dark);
+        .sidebar h3 {
+            font-size: 14px;
+            margin-bottom: 15px;
             font-weight: 600;
+        }
+
+        .cart-summary {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            font-size: 13px;
         }
 
         .cart-item {
             display: flex;
             justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid #e5e7eb;
-            font-size: 14px;
-        }
-
-        .cart-item:last-child {
-            border-bottom: none;
+            margin-bottom: 5px;
+            font-size: 12px;
         }
 
         .summary-row {
             display: flex;
             justify-content: space-between;
-            padding: 12px 0;
-            font-size: 14px;
-            color: #6b7280;
+            margin: 8px 0;
+            font-size: 13px;
         }
 
         .summary-row.total {
-            font-size: 18px;
-            font-weight: bold;
-            color: var(--dark);
-            padding: 15px 0;
-            border-top: 2px solid #e5e7eb;
-            margin-top: 15px;
+            font-weight: 600;
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+            margin-top: 8px;
+            font-size: 16px;
+            color: #222;
         }
 
-        .summary-row.total span:last-child {
-            color: var(--primary);
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
         .btn-primary {
-            width: 100%;
-            padding: 14px;
-            background: var(--primary);
+            background: #007bff;
             color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: all 0.3s ease;
         }
 
         .btn-primary:hover {
-            background: #4f46e5;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(99, 102, 241, 0.3);
+            background: #0056b3;
         }
 
         .btn-secondary {
-            width: 100%;
-            padding: 12px;
-            background: white;
-            color: var(--primary);
-            border: 2px solid var(--primary);
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            margin-top: 10px;
-            transition: all 0.3s ease;
+            background: #6c757d;
+            color: white;
         }
 
         .btn-secondary:hover {
-            background: rgba(99, 102, 241, 0.05);
+            background: #545b62;
         }
 
-        .error-message {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
+        .error {
+            color: #dc3545;
+            font-size: 13px;
+            margin-top: 5px;
         }
 
-        .success-message {
-            background: #dcfce7;
-            color: #166534;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        @media (max-width: 768px) {
-            .row-main {
-                grid-template-columns: 1fr;
-            }
-
-            .shipping-options {
-                grid-template-columns: 1fr;
-            }
-
-            .sidebar {
-                position: static;
-            }
+        .success {
+            color: #28a745;
+            font-size: 13px;
+            margin-top: 5px;
         }
     </style>
 </head>
 <body>
-    <div class="container-main">
-        <!-- Header -->
-        <div class="checkout-header">
-            <h1 style="color: var(--dark); margin-bottom: 20px;">MobileNest Checkout</h1>
-            <div class="progress-steps">
-                <div class="step completed">
-                    <div class="step-number">✓</div>
-                    <div class="step-title">Keranjang</div>
-                </div>
-                <div class="step active">
-                    <div class="step-number">2</div>
-                    <div class="step-title">Pengiriman</div>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-title">Pembayaran</div>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <div class="step-title">Selesai</div>
-                </div>
-            </div>
-        </div>
+    <div class="container">
+        <h1>📦 Data Pengiriman</h1>
 
-        <!-- Main Content -->
-        <div class="row-main">
+        <div class="main-content">
             <!-- Form Section -->
-            <div class="form-section">
-                <h3>Data Pengiriman</h3>
-                
-                <div class="error-message" id="errorMsg"></div>
-                <div class="success-message" id="successMsg"></div>
+            <form id="shippingForm" class="form-section">
+                <div class="form-group">
+                    <label>Nama Penerima *</label>
+                    <input type="text" name="nama_penerima" value="<?php echo htmlspecialchars($user['nama_pengguna'] ?? ''); ?>" required>
+                </div>
 
-                <form id="shippingForm" method="POST">
-                    <div class="form-group">
-                        <label for="nama_penerima">Nama Penerima *</label>
-                        <input type="text" id="nama_penerima" name="nama_penerima" 
-                               value="<?php echo htmlspecialchars($user_data['nama_pengguna'] ?? ''); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Nomor Telepon *</label>
+                    <input type="tel" name="no_telepon" value="<?php echo htmlspecialchars($user['no_telepon'] ?? ''); ?>" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="no_telepon">Nomor Telepon *</label>
-                        <input type="tel" id="no_telepon" name="no_telepon" 
-                               value="<?php echo htmlspecialchars($user_data['no_telepon'] ?? ''); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" name="email" value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="email">Email *</label>
-                        <input type="email" id="email" name="email" 
-                               value="<?php echo htmlspecialchars($user_data['email'] ?? ''); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Alamat Lengkap *</label>
+                    <textarea name="alamat_lengkap" required></textarea>
+                </div>
 
-                    <div class="form-group">
-                        <label for="provinsi">Provinsi *</label>
-                        <input type="text" id="provinsi" name="provinsi" 
-                               value="<?php echo htmlspecialchars($user_data['provinsi'] ?? 'Jawa Barat'); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Kota/Kabupaten *</label>
+                    <input type="text" name="kota" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="kota">Kota *</label>
-                        <input type="text" id="kota" name="kota" 
-                               value="<?php echo htmlspecialchars($user_data['kota'] ?? 'Solok'); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Kode Pos *</label>
+                    <input type="text" name="kode_pos" placeholder="Cth: 40141" required>
+                </div>
 
-                    <div class="form-group">
-                        <label for="kecamatan">Kecamatan *</label>
-                        <input type="text" id="kecamatan" name="kecamatan" 
-                               value="<?php echo htmlspecialchars($user_data['alamat'] ?? ''); ?>" required>
-                    </div>
+                <div class="form-group">
+                    <label>Catatan (Opsional)</label>
+                    <textarea name="catatan" style="min-height: 40px;"></textarea>
+                </div>
 
-                    <div class="form-group">
-                        <label for="kode_pos">Kode Pos *</label>
-                        <input type="text" id="kode_pos" name="kode_pos" placeholder="5-10 digits" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="alamat_lengkap">Alamat Lengkap *</label>
-                        <textarea id="alamat_lengkap" name="alamat_lengkap" required 
-                                  placeholder="Jl. Nama, No. XX, RT XX, RW XX"></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Metode Pengiriman *</label>
-                        <div class="shipping-options">
-                            <div class="shipping-option selected" data-method="regular">
-                                <input type="radio" id="regular" name="metode_pengiriman" value="regular" checked>
-                                <label for="regular" style="cursor: pointer; margin: 0;">
-                                    <div class="shipping-name">Regular</div>
-                                    <div class="shipping-price">Rp 20.000</div>
-                                    <div class="shipping-time">3-5 Hari</div>
-                                </label>
-                            </div>
-                            <div class="shipping-option" data-method="express">
-                                <input type="radio" id="express" name="metode_pengiriman" value="express">
-                                <label for="express" style="cursor: pointer; margin: 0;">
-                                    <div class="shipping-name">Express</div>
-                                    <div class="shipping-price">Rp 50.000</div>
-                                    <div class="shipping-time">1-2 Hari</div>
-                                </label>
-                            </div>
-                            <div class="shipping-option" data-method="same_day">
-                                <input type="radio" id="same_day" name="metode_pengiriman" value="same_day">
-                                <label for="same_day" style="cursor: pointer; margin: 0;">
-                                    <div class="shipping-name">Same Day</div>
-                                    <div class="shipping-price">Rp 100.000</div>
-                                    <div class="shipping-time">Hari Ini</div>
-                                </label>
-                            </div>
+                <!-- Shipping Methods -->
+                <div class="shipping-methods">
+                    <h3>Metode Pengiriman</h3>
+                    
+                    <label class="method-item">
+                        <input type="radio" name="metode_pengiriman" value="regular" checked data-cost="20000">
+                        <div class="method-label">
+                            <span class="method-name">🚚 Regular (5-7 hari)</span>
+                            <span class="method-cost">Rp 20.000</span>
                         </div>
-                    </div>
+                    </label>
 
-                    <div class="form-group">
-                        <label for="catatan">Catatan (Opsional)</label>
-                        <textarea id="catatan" name="catatan" placeholder="Catatan untuk kurir..."></textarea>
-                    </div>
+                    <label class="method-item">
+                        <input type="radio" name="metode_pengiriman" value="express" data-cost="50000">
+                        <div class="method-label">
+                            <span class="method-name">⚡ Express (2-3 hari)</span>
+                            <span class="method-cost">Rp 50.000</span>
+                        </div>
+                    </label>
 
-                    <button type="submit" class="btn-primary">Lanjut ke Pembayaran</button>
-                    <a href="keranjang.php" class="btn-secondary">Kembali ke Keranjang</a>
-                </form>
-            </div>
+                    <label class="method-item">
+                        <input type="radio" name="metode_pengiriman" value="same_day" data-cost="100000">
+                        <div class="method-label">
+                            <span class="method-name">🏃 Same Day</span>
+                            <span class="method-cost">Rp 100.000</span>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="buttons">
+                    <button type="button" class="btn-secondary" onclick="history.back()">← Kembali</button>
+                    <button type="submit" class="btn-primary">Lanjut ke Pembayaran →</button>
+                </div>
+
+                <div id="message"></div>
+            </form>
 
             <!-- Sidebar -->
             <div class="sidebar">
-                <h4>Ringkasan Belanja</h4>
+                <h3>📋 Ringkasan Pesanan</h3>
 
-                <?php foreach ($cart_items as $item): ?>
-                    <div class="cart-item">
-                        <span><?php echo htmlspecialchars($item['nama_produk']); ?> x <?php echo $item['qty']; ?></span>
-                        <span>Rp <?php echo number_format($item['harga'] * $item['qty'], 0, ',', '.'); ?></span>
-                    </div>
-                <?php endforeach; ?>
-
-                <div class="summary-row">
-                    <span>Subtotal</span>
-                    <span id="subtotal-amount">Rp <?php echo number_format($subtotal, 0, ',', '.'); ?></span>
+                <div class="cart-summary">
+                    <?php foreach ($cart_items as $item): ?>
+                        <div class="cart-item">
+                            <span><?php echo htmlspecialchars($item['nama_produk']); ?> x<?php echo $item['qty']; ?></span>
+                            <span>Rp <?php echo number_format($item['harga'] * $item['qty']); ?></span>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
 
-                <?php if ($diskon > 0): ?>
-                    <div class="summary-row">
-                        <span>Diskon</span>
-                        <span style="color: var(--success);">-Rp <?php echo number_format($diskon, 0, ',', '.'); ?></span>
-                    </div>
-                <?php endif; ?>
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>Rp <?php echo number_format($subtotal); ?></span>
+                </div>
 
                 <div class="summary-row">
-                    <span>Ongkir</span>
-                    <span id="ongkir-amount">Rp <?php echo number_format($ongkir, 0, ',', '.'); ?></span>
+                    <span>Ongkir:</span>
+                    <span id="ongkir-display">Rp 20.000</span>
                 </div>
 
                 <div class="summary-row total">
-                    <span>Total</span>
-                    <span id="total-amount">Rp <?php echo number_format($total, 0, ',', '.'); ?></span>
+                    <span>Total:</span>
+                    <span id="total-display">Rp <?php echo number_format($subtotal + 20000); ?></span>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const shippingCosts = {
-            regular: 20000,
-            express: 50000,
-            same_day: 100000
-        };
-
         const subtotal = <?php echo $subtotal; ?>;
-        const diskon = <?php echo $diskon; ?>;
+        const form = document.getElementById('shippingForm');
+        const messageDiv = document.getElementById('message');
+        const ongkirDisplay = document.getElementById('ongkir-display');
+        const totalDisplay = document.getElementById('total-display');
+        const shippingRadios = document.querySelectorAll('input[name="metode_pengiriman"]');
 
-        // Shipping method change
-        document.querySelectorAll('input[name="metode_pengiriman"]').forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                const method = e.target.value;
-                
-                // Update visual selection
-                document.querySelectorAll('.shipping-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                });
-                e.target.closest('.shipping-option').classList.add('selected');
-
-                // Update ongkir
-                const newOngkir = shippingCosts[method];
-                const newTotal = subtotal - diskon + newOngkir;
-                
-                document.getElementById('ongkir-amount').textContent = 
-                    'Rp ' + newOngkir.toLocaleString('id-ID');
-                document.getElementById('total-amount').textContent = 
-                    'Rp ' + newTotal.toLocaleString('id-ID');
+        // Update total when shipping method changes
+        shippingRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const cost = parseInt(this.dataset.cost);
+                const total = subtotal + cost;
+                ongkirDisplay.textContent = 'Rp ' + cost.toLocaleString('id-ID');
+                totalDisplay.textContent = 'Rp ' + total.toLocaleString('id-ID');
             });
         });
 
-        // Form submission
-        document.getElementById('shippingForm').addEventListener('submit', async (e) => {
+        // Handle form submit
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const formData = {
-                nama_penerima: document.getElementById('nama_penerima').value,
-                no_telepon: document.getElementById('no_telepon').value,
-                email: document.getElementById('email').value,
-                provinsi: document.getElementById('provinsi').value,
-                kota: document.getElementById('kota').value,
-                kecamatan: document.getElementById('kecamatan').value,
-                kode_pos: document.getElementById('kode_pos').value,
-                alamat_lengkap: document.getElementById('alamat_lengkap').value,
-                metode_pengiriman: document.getElementById('metode_pengiriman').value,
-                catatan: document.getElementById('catatan').value
-            };
+            const formData = new FormData(form);
 
             try {
                 const response = await fetch('../api/shipping-handler.php', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
+                    body: formData
                 });
 
                 const result = await response.json();
@@ -594,18 +403,15 @@ $total = $subtotal - $diskon + $ongkir;
                 if (result.success) {
                     window.location.href = 'pembayaran.php';
                 } else {
-                    showError(result.message);
+                    messageDiv.className = 'error';
+                    messageDiv.textContent = result.message || 'Terjadi kesalahan';
                 }
             } catch (error) {
-                showError('Terjadi kesalahan: ' + error.message);
+                console.error('Error:', error);
+                messageDiv.className = 'error';
+                messageDiv.textContent = 'Error: ' + error.message;
             }
         });
-
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMsg');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
     </script>
 </body>
 </html>
