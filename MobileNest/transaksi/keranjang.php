@@ -166,6 +166,26 @@ include '../includes/header.php';
     cursor: pointer;
     font-size: 14px;
 }
+.empty-cart-message {
+    background: linear-gradient(135deg, #e8f0fe 0%, #f3e5f5 100%);
+    border-radius: 15px;
+    padding: 60px 20px;
+    text-align: center;
+    margin-bottom: 30px;
+}
+.empty-cart-message i {
+    font-size: 3rem;
+    color: #667eea;
+    margin-bottom: 20px;
+}
+.empty-cart-message h4 {
+    color: #2c3e50;
+    margin: 20px 0 10px;
+}
+.empty-cart-message p {
+    color: #7f8c8d;
+    margin-bottom: 20px;
+}
 </style>
 
 <div class="container py-5">
@@ -191,46 +211,18 @@ include '../includes/header.php';
 
     <div class="row">
         <div class="col-lg-8">
-            <!-- Cart Items -->
+            <!-- Cart Items Container (populated by JS) -->
             <div id="cart-items-container">
-                <!-- Sample items (will be replaced by JS) -->
-                <div class="cart-item">
-                    <img src="<?php echo SITE_URL; ?>/assets/images/logo.jpg" alt="Product">
-                    <div class="cart-item-info">
-                        <div class="cart-item-title">Samsung Galaxy A55</div>
-                        <div class="cart-item-price">Harga: Rp 5.999.000</div>
-                    </div>
-                    <div class="quantity-control">
-                        <button>-</button>
-                        <input type="number" value="1" readonly>
-                        <button>+</button>
-                    </div>
-                    <div>
-                        <div class="fw-bold" style="color: #667eea;">Rp 5.999.000</div>
-                        <button class="btn-remove"><i class="bi bi-trash"></i> Hapus</button>
-                    </div>
-                </div>
-                
-                <div class="cart-item">
-                    <img src="<?php echo SITE_URL; ?>/assets/images/logo.jpg" alt="Product">
-                    <div class="cart-item-info">
-                        <div class="cart-item-title">Xiaomi Redmi Note 13</div>
-                        <div class="cart-item-price">Harga: Rp 3.999.000</div>
-                    </div>
-                    <div class="quantity-control">
-                        <button>-</button>
-                        <input type="number" value="2" readonly>
-                        <button>+</button>
-                    </div>
-                    <div>
-                        <div class="fw-bold" style="color: #667eea;">Rp 7.998.000</div>
-                        <button class="btn-remove"><i class="bi bi-trash"></i> Hapus</button>
+                <!-- Loading indicator -->
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
             </div>
 
             <!-- Voucher Box -->
-            <div class="voucher-box">
+            <div class="voucher-box" id="voucher-section" style="display: none;">
                 <label class="fw-bold mb-2">Kode Voucher</label>
                 <small class="text-muted d-block mb-2">(contoh: MOBILENEST10)</small>
                 <div class="voucher-input-group">
@@ -242,31 +234,29 @@ include '../includes/header.php';
 
         <div class="col-lg-4">
             <!-- Summary Card -->
-            <div class="summary-card">
+            <div class="summary-card" id="cart-summary" style="display: none;">
                 <h5 class="fw-bold mb-4">Ringkasan Belanja</h5>
                 <div class="summary-row">
                     <span>Total Produk</span>
-                    <span class="fw-bold">3</span>
+                    <span class="fw-bold" id="total-items">0</span>
                 </div>
                 <div class="summary-row">
                     <span>Subtotal</span>
-                    <span class="fw-bold">Rp 13.997.000</span>
+                    <span class="fw-bold" id="subtotal">Rp 0</span>
                 </div>
                 <div class="summary-row">
                     <span>Diskon</span>
-                    <span class="fw-bold text-success">-Rp 0</span>
+                    <span class="fw-bold text-success" id="discount">-Rp 0</span>
                 </div>
                 <div class="summary-row">
                     <span>Ongkir</span>
-                    <span class="fw-bold">Rp 20.000</span>
+                    <span class="fw-bold" id="shipping">Rp 20.000</span>
                 </div>
                 <div class="summary-row total">
                     <span>Total</span>
-                    <span style="color: #667eea;">Rp 14.017.000</span>
+                    <span style="color: #667eea;" id="total-price">Rp 0</span>
                 </div>
-                <button class="btn-checkout">
-                    Lanjut ke Pengiriman <i class="bi bi-arrow-right"></i>
-                </button>
+                <button class="btn-checkout" onclick="window.location.href='pengiriman.php'">Lanjut ke Pengiriman <i class="bi bi-arrow-right"></i></button>
             </div>
         </div>
     </div>
