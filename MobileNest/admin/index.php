@@ -26,6 +26,8 @@ $home_url = "../index.php";
     <style>
         body { background-color: #f8f9fa; }
         .admin-nav { background-color: #2c3e50; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .navbar-brand { cursor: pointer; user-select: none; }
+        .navbar-brand:hover { opacity: 0.9; }
         .sidebar { position: sticky; top: 100px; }
         .card { border-radius: 10px; }
         .btn-primary { background-color: #007bff; }
@@ -37,7 +39,7 @@ $home_url = "../index.php";
     <!-- ADMIN NAVBAR ONLY -->
     <nav class="navbar navbar-expand-lg navbar-dark admin-nav sticky-top">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="index.php">
+            <a class="navbar-brand fw-bold" href="#" onclick="location.href='index.php'; return false;" title="Go to Dashboard">
                 <i class="bi bi-speedometer2"></i> Admin MobileNest
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav">
